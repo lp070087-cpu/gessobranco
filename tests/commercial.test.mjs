@@ -42,15 +42,18 @@ test("commercial commands against isolated PostgreSQL, including reopening persi
     return result.rows[0].result;
   };
   try {
+    // Persist one fixture transaction instead of fsyncing every DDL statement on Windows.
+    await db.exec("BEGIN");
     await db.exec(await readFile(new URL("../drizzle/0000_preciso.sql", import.meta.url), "utf8"));
     const migration = await readFile(
       new URL("../drizzle/0001_commercial.sql", import.meta.url),
       "utf8",
     );
-    await db.exec("BEGIN");
     for (const statement of sqlStatements(migration)) await db.exec(statement);
     await db.exec("COMMIT");
-    await db.exec(migration); // replay must preserve records and schema
+    await db.exec("BEGIN");
+    for (const statement of sqlStatements(migration)) await db.exec(statement);
+    await db.exec("COMMIT"); // replay must preserve records and schema
     await db.query(
       "INSERT INTO preciso.users(id,email,full_name,password_hash,role) VALUES($1,'test@example.invalid','Teste','test-only','admin')",
       [actor],
