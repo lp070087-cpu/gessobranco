@@ -38,6 +38,7 @@ dist-ssr
 /vivence-joias-main*/
 .vercel/
 .maestri/
+.lovable/
 coverage/
 test-results/
 playwright-report/

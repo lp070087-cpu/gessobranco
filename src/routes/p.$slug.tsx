@@ -189,7 +189,7 @@ function PublicPage() {
   const runAI = async () => {
     if (!svc) return toast.error("Escolha um serviço.");
     if (!user) {
-      toast.error("Faça login para usar a análise por IA.");
+      toast.error("Faça login para gerar uma estimativa preliminar.");
       navigate({ to: "/login" });
       return;
     }
@@ -222,7 +222,7 @@ function PublicPage() {
         multiplier: result.multiplier,
         summary: result.summary,
       });
-      toast.success("Análise concluída pela IA");
+      toast.success("Estimativa preliminar gerada. A equipe precisa revisar os valores.");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Falha na análise");
     } finally {
@@ -306,7 +306,7 @@ function PublicPage() {
                 className="text-[10px] uppercase tracking-[0.3em] font-bold"
                 style={{ color: brand }}
               >
-                Calculadora inteligente
+                Estimativa de orçamento
               </div>
               <h2 className="text-2xl md:text-3xl font-extrabold tracking-tighter mt-1">
                 Faça seu orçamento agora
@@ -399,10 +399,11 @@ function PublicPage() {
             <div className="flex items-center justify-between gap-3 flex-wrap">
               <div>
                 <div className="text-sm font-bold inline-flex items-center gap-2">
-                  <Sparkles className="size-4 text-accent" /> Análise por IA
+                  <Sparkles className="size-4 text-accent" /> Fotos e avaliação preliminar
                 </div>
                 <div className="text-xs text-muted-foreground">
-                  Envie até 4 fotos do local. Nossa IA detecta defeitos e ajusta a estimativa.
+                  Envie até 4 fotos para revisão da equipe. A estimativa usa as medidas e condições
+                  informadas; as fotos não são analisadas automaticamente.
                 </div>
               </div>
               <button
@@ -458,7 +459,7 @@ function PublicPage() {
               ) : (
                 <Sparkles className="size-4" />
               )}
-              {analyzing ? "Analisando..." : "Analisar com IA"}
+              {analyzing ? "Gerando estimativa..." : "Atualizar estimativa"}
             </button>
           </div>
 
@@ -479,14 +480,14 @@ function PublicPage() {
               />
               <Metric
                 icon={Sparkles}
-                label="Ajuste IA"
+                label="Ajuste pelas condições"
                 value={`x${ai.multiplier.toFixed(2)}`}
                 brand={brand}
               />
               {ai.detected_issues.length > 0 && (
                 <div className="sm:col-span-3 bg-background border border-border rounded-xl p-4">
                   <div className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold mb-1">
-                    Detectado pela IA
+                    Condições informadas
                   </div>
                   <div className="flex flex-wrap gap-1.5">
                     {ai.detected_issues.map((i, k) => (
