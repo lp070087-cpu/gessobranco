@@ -1,0 +1,259 @@
+.preciso-public,
+.preciso-client,
+.preciso-auth {
+  --preciso-line: color-mix(in srgb, var(--color-accent) 17%, transparent);
+  overflow-x: clip;
+}
+.preciso-public {
+  background:
+    radial-gradient(ellipse at 80% 0%, #b89a5710, transparent 45%), var(--color-background);
+}
+.preciso-public .public-container {
+  width: min(1240px, calc(100% - 40px));
+  margin-inline: auto;
+}
+.preciso-public .public-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  min-height: 84px;
+}
+.preciso-public .eyebrow,
+.preciso-client .eyebrow {
+  font-size: 10px;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: var(--color-accent);
+}
+.preciso-public .public-hero {
+  position: relative;
+  padding-block: 70px 80px;
+  display: grid;
+  grid-template-columns: 1fr 1.05fr;
+  align-items: center;
+  gap: 64px;
+}
+.preciso-public .public-hero h1 {
+  font-size: clamp(44px, 5.5vw, 78px);
+  line-height: 1.01;
+  letter-spacing: -0.065em;
+  font-weight: 600;
+  max-width: 660px;
+}
+.preciso-public .public-section {
+  padding-block: 80px;
+  scroll-margin-top: 100px;
+}
+.preciso-public .section-title {
+  font-size: clamp(30px, 3.5vw, 48px);
+  font-weight: 500;
+  letter-spacing: -0.045em;
+  line-height: 1.12;
+}
+.preciso-public .public-service {
+  display: block;
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: 20px;
+  aspect-ratio: 4/5;
+  transition:
+    transform 0.35s,
+    border-color 0.35s;
+}
+.preciso-public .public-service:hover {
+  transform: translateY(-6px);
+  border-color: var(--color-accent);
+}
+.preciso-public .public-service img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.7s;
+}
+.preciso-public .public-service:hover img {
+  transform: scale(1.055);
+}
+.preciso-public .public-service:after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(0deg, #0c0c0def, transparent 85%);
+}
+.preciso-public .public-service-label {
+  position: absolute;
+  z-index: 1;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 24px;
+  color: #fff;
+}
+.preciso-public .gold-button,
+.preciso-client .gold-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  border-radius: 12px;
+  background: var(--color-accent);
+  color: var(--color-accent-foreground);
+  padding: 15px 22px;
+  font-size: 12px;
+  font-weight: 700;
+  transition:
+    transform 0.25s,
+    filter 0.25s;
+}
+.preciso-public .gold-button:hover,
+.preciso-client .gold-button:hover {
+  transform: translateY(-2px);
+  filter: brightness(1.08);
+}
+.preciso-public .public-calculator {
+  position: relative;
+  border-radius: 26px;
+  background: linear-gradient(145deg, #ffffff07, transparent), var(--color-surface);
+  border: 1px solid var(--preciso-line);
+  box-shadow: 0 30px 90px #0003;
+  scroll-margin-top: 110px;
+}
+.preciso-public .public-calculator:before {
+  content: "";
+  position: absolute;
+  pointer-events: none;
+  top: 0;
+  left: 12%;
+  right: 12%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--color-accent), transparent);
+}
+.preciso-public .reveal {
+  animation: preciso-enter 0.65s both;
+}
+.preciso-client header {
+  box-shadow: 0 8px 30px #0000000a;
+}
+.preciso-client main {
+  min-height: calc(100vh - 190px);
+}
+.preciso-client main section {
+  scroll-margin-top: 100px;
+}
+.preciso-client main :is(.bg-surface, .bg-surface-elevated) {
+  box-shadow: 0 8px 26px #0000000b;
+}
+.preciso-client main :is(input, textarea, select),
+.preciso-auth :is(input, textarea, select) {
+  transition:
+    border-color 0.2s,
+    box-shadow 0.2s;
+}
+.preciso-client main :is(input, textarea, select):focus,
+.preciso-auth :is(input, textarea, select):focus {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 12%, transparent);
+}
+.preciso-client .client-stat {
+  border: 1px solid var(--color-border);
+  border-radius: 18px;
+  padding: 22px;
+  background: linear-gradient(135deg, #ffffff05, transparent), var(--color-surface);
+  transition:
+    border-color 0.3s,
+    transform 0.3s;
+}
+.preciso-client .client-stat:hover {
+  border-color: var(--preciso-line);
+  transform: translateY(-3px);
+}
+.preciso-auth .auth-card {
+  padding: 32px;
+  border: 1px solid var(--preciso-line);
+  border-radius: 24px;
+  background: color-mix(in srgb, var(--color-surface) 90%, transparent);
+  box-shadow: 0 24px 80px #0002;
+  backdrop-filter: blur(18px);
+}
+.preciso-public :focus-visible,
+.preciso-client :focus-visible,
+.preciso-auth :focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 4px;
+}
+@keyframes preciso-enter {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (min-width: 900px) {
+  .preciso-auth .auth-layout {
+    max-width: 1120px;
+    display: grid;
+    grid-template-columns: 1fr 440px;
+    gap: 100px;
+    align-items: center;
+  }
+  .preciso-auth .auth-story {
+    display: block;
+  }
+  .preciso-auth .auth-logo {
+    position: absolute;
+    top: 40px;
+  }
+  .preciso-auth .auth-footer {
+    grid-column: 1/-1;
+  }
+}
+@media (max-width: 899px) {
+  .preciso-public .public-hero {
+    grid-template-columns: 1fr;
+    gap: 36px;
+    padding-block: 44px;
+  }
+  .preciso-public .public-section {
+    padding-block: 52px;
+  }
+  .preciso-public .public-nav {
+    min-height: 72px;
+  }
+  .preciso-auth .auth-story {
+    display: none;
+  }
+}
+@media (max-width: 480px) {
+  .preciso-public .public-container {
+    width: calc(100% - 32px);
+  }
+  .preciso-public .public-service-label {
+    padding: 16px;
+  }
+  .preciso-auth .auth-card {
+    padding: 24px;
+  }
+  .preciso-public .public-hero h1 {
+    font-size: 46px;
+  }
+  .preciso-client nav[aria-label="Navegação principal"] {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .preciso-public *,
+  .preciso-client *,
+  .preciso-auth * {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+  .preciso-public .public-service:hover,
+  .preciso-client .client-stat:hover {
+    transform: none;
+  }
+}

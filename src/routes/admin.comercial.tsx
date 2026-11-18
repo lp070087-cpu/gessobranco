@@ -1,0 +1,1033 @@
+import { useEffect, useRef, useState, type FormEvent } from "react";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import {
+  commercialFetch,
+  localDay,
+  moneyBR,
+  quantityBR,
+  type CommercialState,
+  type Product,
+  type Report,
+} from "@/lib/commercial-client";
+import {
+  CommandForm,
+  ProductEditor,
+  paymentOptions,
+  productForUnit,
+  productUnits,
+  type Command,
+} from "@/components/preciso/CommercialForms";
+import { CommercialSales } from "@/components/preciso/CommercialSales";
+import { CommercialImport } from "@/components/preciso/CommercialImport";
+import "@/components/preciso/commercial.css";
+
+export const Route = createFileRoute("/admin/comercial")({
+  head: () => ({ meta: [{ title: "Gestão da loja — Ouro Branco" }] }),
+  component: Commercial,
+});
+type Actor = { id: string; full_name: string; role: string };
+type Pending = { actor: string; kind: string; body: Record<string, unknown> };
+const tabs = [
+  "Hoje",
+  "Vender",
+  "Produtos",
+  "Estoque",
+  "Clientes",
+  "Compras",
+  "Caixa",
+  "Financeiro",
+  "Importar",
+] as const;
+
+function Commercial() {
+  const [user, setUser] = useState<Actor | null>(null);
+  const [state, setState] = useState<CommercialState | null>(null);
+  const [report, setReport] = useState<Report | null>(null);
+  const [tab, setTab] = useState<(typeof tabs)[number]>("Hoje");
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [pending, setPending] = useState<Pending | null>(null);
+  const [start, setStart] = useState(localDay);
+  const [end, setEnd] = useState(localDay);
+  const locked = useRef(false);
+  const pendingOperation = useRef<Pending | null>(null);
+  const [editing, setEditing] = useState<Product | "new" | null>(null);
+
+  async function load(signal?: AbortSignal) {
+    setState(await commercialFetch<CommercialState>("commercial/state", undefined, signal));
+    setReport(
+      await commercialFetch<Report>(
+        `commercial/report?start=${start}&end=${end}`,
+        undefined,
+        signal,
+      ),
+    );
+  }
+  useEffect(() => {
+    const controller = new AbortController();
+    void (async () => {
+      try {
+        const data = await commercialFetch<{ user: Actor }>(
+          "auth/me",
+          undefined,
+          controller.signal,
+        );
+        if (data.user.role !== "admin")
+          throw new Error("Esta área exige uma conta administrativa.");
+        setUser(data.user);
+        try {
+          const saved = JSON.parse(
+            sessionStorage.getItem("ouro-pending-commercial") || "null",
+          ) as Pending | null;
+          pendingOperation.current = saved;
+          setPending(saved);
+        } catch {
+          /* Storage can be unavailable in private mode. */
+        }
+        await load(controller.signal);
+      } catch (failure) {
+        if (!controller.signal.aborted && (failure as Error & { status?: number }).status !== 401)
+          setError(failure instanceof Error ? failure.message : "Falha ao carregar a gestão.");
+      } finally {
+        if (!controller.signal.aborted) setLoading(false);
+      }
+    })();
+    return () => controller.abort();
+    // Reports update through the explicit period action, preserving unsaved forms.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function storePending(value: Pending | null) {
+    pendingOperation.current = value;
+    setPending(value);
+    try {
+      if (value) sessionStorage.setItem("ouro-pending-commercial", JSON.stringify(value));
+      else sessionStorage.removeItem("ouro-pending-commercial");
+    } catch {
+      /* The in-memory key still protects retries within this tab. */
+    }
+  }
+
+  async function execute(operation: Pending) {
+    if (locked.current) throw new Error("Aguarde a operação em andamento.");
+    if (!user || operation.actor !== user.id)
+      throw new Error("A operação pendente pertence a outra sessão. Entre com a conta original.");
+    locked.current = true;
+    setBusy(true);
+    setError("");
+    setMessage("");
+    try {
+      const result = await commercialFetch<{ id: string }>(
+        `commercial/${operation.kind}`,
+        operation.body,
+      );
+      storePending(null);
+      setMessage("Operação registrada.");
+      try {
+        await load();
+      } catch {
+        setError(
+          "A operação foi registrada, mas a atualização da tela falhou. Atualize para conferir o histórico.",
+        );
+      }
+      return result;
+    } catch (failure) {
+      const status = (failure as Error & { status?: number }).status;
+      if (status && status >= 400 && status < 500) storePending(null);
+      setError(
+        failure instanceof Error
+          ? failure.message
+          : "Não foi possível confirmar a operação. Confira o histórico antes de reenviar.",
+      );
+      throw failure;
+    } finally {
+      locked.current = false;
+      setBusy(false);
+    }
+  }
+
+  const command: Command = async (kind, data) => {
+    if (!user) throw new Error("Entre na sua conta.");
+    if (pendingOperation.current) {
+      const error = new Error(
+        "Existe uma operação aguardando confirmação. Use o botão de conferir e reenviar acima.",
+      );
+      setError(error.message);
+      throw error;
+    }
+    const operation = { actor: user.id, kind, body: { ...data, request_key: crypto.randomUUID() } };
+    storePending(operation);
+    return execute(operation);
+  };
+
+  async function signIn(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusy(true);
+    setError("");
+    const form = event.currentTarget;
+    const data = new FormData(form);
+    try {
+      const response = await commercialFetch<{ user: Actor }>("auth/login", {
+        email: String(data.get("email")),
+        password: String(data.get("password")),
+      });
+      if (response.user.role !== "admin")
+        throw new Error("Esta área exige uma conta administrativa.");
+      setUser(response.user);
+      await load();
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : "Falha ao entrar.");
+      const field = form.elements.namedItem("password") as HTMLInputElement;
+      field.value = "";
+      field.focus();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (loading)
+    return (
+      <main className="commercial">
+        <p role="status">Carregando gestão da loja…</p>
+      </main>
+    );
+  if (!user)
+    return (
+      <main className="commercial">
+        <header className="commercial-header">
+          <h1>OURO BRANCO</h1>
+          <Link to="/">Ver site</Link>
+        </header>
+        <form onSubmit={signIn} className="panel" style={{ maxWidth: 480, margin: "40px auto" }}>
+          <h2>Entrar na gestão da loja</h2>
+          <p className="hint">
+            Acesse com a conta administrativa cadastrada para a gestão comercial.
+          </p>
+          {error && (
+            <p role="alert" className="notice error">
+              {error}
+            </p>
+          )}
+          <label>
+            E-mail
+            <input type="email" name="email" autoComplete="username" required />
+          </label>
+          <label>
+            Senha
+            <input type="password" name="password" autoComplete="current-password" required />
+          </label>
+          <button disabled={busy} className="action primary">
+            {busy ? "Entrando…" : "Entrar"}
+          </button>
+        </form>
+      </main>
+    );
+
+  return (
+    <main className="commercial preciso-client">
+      <header className="commercial-header">
+        <div>
+          <h1>OURO BRANCO</h1>
+          <small>Gestão da loja · {user.full_name}</small>
+        </div>
+        <div className="actions">
+          <Link to="/" className="action">
+            Ver site
+          </Link>
+          <button
+            className="action"
+            disabled={busy || Boolean(pending)}
+            onClick={() =>
+              void commercialFetch("auth/logout", {})
+                .then(() => {
+                  setUser(null);
+                  setState(null);
+                })
+                .catch((failure) => setError(failure.message))
+            }
+          >
+            Sair
+          </button>
+        </div>
+      </header>
+      {error && (
+        <p className="notice error" role="alert">
+          {error}
+        </p>
+      )}
+      {message && (
+        <p className="notice" role="status">
+          {message}
+        </p>
+      )}
+      {pending && (
+        <div className="notice">
+          <p>
+            A última operação ainda precisa de confirmação. Reenviar mantém o mesmo identificador
+            para evitar registro duplicado.
+          </p>
+          <button
+            className="action"
+            disabled={busy}
+            onClick={() => void execute(pending).catch(() => {})}
+          >
+            Conferir e reenviar operação
+          </button>
+        </div>
+      )}
+      <nav aria-label="Gestão comercial">
+        {tabs.map((item) => (
+          <button
+            key={item}
+            aria-current={tab === item ? "page" : undefined}
+            onClick={() => {
+              setTab(item);
+              setEditing(null);
+            }}
+          >
+            {item}
+          </button>
+        ))}
+      </nav>
+      {!state ? (
+        <button
+          className="action"
+          onClick={() => void load().catch((failure) => setError(failure.message))}
+        >
+          Tentar carregar novamente
+        </button>
+      ) : (
+        <fieldset disabled={busy} style={{ minWidth: 0 }}>
+          {(tab === "Hoje" || tab === "Financeiro") && (
+            <>
+              <form
+                className="actions"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void load().catch((failure) => setError(failure.message));
+                }}
+              >
+                <label>
+                  De
+                  <input
+                    type="date"
+                    value={start}
+                    onChange={(event) => setStart(event.target.value)}
+                    required
+                  />
+                </label>
+                <label>
+                  Até
+                  <input
+                    type="date"
+                    value={end}
+                    onChange={(event) => setEnd(event.target.value)}
+                    required
+                  />
+                </label>
+                <button className="action">Atualizar período</button>
+              </form>
+              {report && (
+                <>
+                  <div className="stats">
+                    {[
+                      ["Vendas após devoluções", moneyBR(report.revenue), "Pelo dia da venda."],
+                      ["Recebimentos", moneyBR(report.received), "Pelo dia em que recebeu."],
+                      ["Ainda a receber", moneyBR(report.receivable), "Saldo de todas as vendas."],
+                      [
+                        "Custo dos produtos vendidos",
+                        moneyBR(report.goods_cost),
+                        "Custo histórico dos lotes.",
+                      ],
+                      [
+                        "Contribuição das vendas",
+                        moneyBR(report.contribution),
+                        report.partial_sales
+                          ? `${report.partial_sales} venda(s) com custos pendentes. Soma conhecida é parcial.`
+                          : "Após mercadorias, frete, taxas e custos atribuídos.",
+                      ],
+                      [
+                        "Despesas operacionais",
+                        moneyBR(report.operating_expenses),
+                        "Pela data de vencimento.",
+                      ],
+                      [
+                        "Resultado estimado",
+                        moneyBR(
+                          report.contribution === null || report.partial_sales
+                            ? null
+                            : Number(report.contribution) - Number(report.operating_expenses),
+                        ),
+                        "Contribuição menos despesas do período.",
+                      ],
+                      [
+                        "Saldo de caixa no período",
+                        moneyBR(Number(report.received) - Number(report.cash_out)),
+                        "Entradas menos pagamentos efetuados.",
+                      ],
+                    ].map(([label, value, hint]) => (
+                      <div className="panel" key={label}>
+                        <small>{label}</small>
+                        <strong>{value}</strong>
+                        <small>{hint}</small>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="notice">
+                    Contas a pagar {moneyBR(report.payable)} · Estornos pendentes{" "}
+                    {moneyBR(report.refund_due)}. Resultado econômico e movimentações de caixa usam
+                    as datas indicadas em cada informação.
+                  </div>
+                </>
+              )}
+              {tab === "Hoje" && (
+                <section className="panel">
+                  <h2>Produtos para repor</h2>
+                  {state.products
+                    .filter(
+                      (product) =>
+                        product.active && Number(product.balance) <= Number(product.minimum_stock),
+                    )
+                    .map((product) => (
+                      <p key={product.id}>
+                        {product.name} · {quantityBR(product.balance)} {product.base_unit}
+                      </p>
+                    ))}
+                  {!state.products.some(
+                    (product) =>
+                      product.active && Number(product.balance) <= Number(product.minimum_stock),
+                  ) && <p className="hint">Nenhum produto ativo está abaixo do estoque mínimo.</p>}
+                  <button className="action space" onClick={() => setTab("Vender")}>
+                    Começar uma venda
+                  </button>
+                </section>
+              )}
+            </>
+          )}
+          {tab === "Vender" && <CommercialSales state={state} command={command} />}
+          {tab === "Produtos" && (
+            <>
+              <section className="panel">
+                <h2>Produtos e unidades</h2>
+                <button className="action primary" onClick={() => setEditing("new")}>
+                  Cadastrar produto
+                </button>
+                <div className="table-scroll">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Produto</th>
+                        <th>Estoque</th>
+                        <th>Unidades e preços padrão</th>
+                        <th>Site</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {state.products.map((product) => (
+                        <tr key={product.id}>
+                          <td>
+                            <button onClick={() => setEditing(product)}>{product.name}</button>
+                            {product.example && (
+                              <p className="hint">Exemplo inativo · confirme peso e preços</p>
+                            )}
+                          </td>
+                          <td>
+                            {quantityBR(product.balance)} {product.base_unit}
+                          </td>
+                          <td>
+                            {product.units.map((unit) => (
+                              <p key={unit.id}>
+                                {unit.name} = {quantityBR(unit.factor)} {product.base_unit} ·{" "}
+                                {moneyBR(unit.price)}
+                              </p>
+                            ))}
+                          </td>
+                          <td>{product.published ? "Publicado" : "Oculto"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+              {editing && (
+                <ProductEditor
+                  key={editing === "new" ? "new" : editing.id}
+                  product={editing === "new" ? undefined : editing}
+                  command={command}
+                  close={() => setEditing(null)}
+                />
+              )}
+              <details>
+                <summary>Preços por cliente, perfil ou quantidade</summary>
+                <CommandForm
+                  title="Nova condição comercial"
+                  kind="price_rule"
+                  command={command}
+                  fields={[
+                    {
+                      name: "unit_id",
+                      label: "Produto e unidade",
+                      type: "select",
+                      required: true,
+                      options: productUnits(state),
+                    },
+                    {
+                      name: "customer_id",
+                      label: "Cliente específico",
+                      type: "select",
+                      nullable: true,
+                      options: state.customers.map((customer) => ({
+                        value: customer.id,
+                        label: customer.name,
+                      })),
+                    },
+                    {
+                      name: "profile",
+                      label: "Perfil (balcao, recorrente, atacado ou revendedor)",
+                      nullable: true,
+                    },
+                    {
+                      name: "minimum_quantity",
+                      label: "Quantidade mínima na unidade selecionada",
+                      type: "number",
+                      value: 1,
+                      required: true,
+                    },
+                    { name: "price", label: "Preço por unidade", type: "number", required: true },
+                    {
+                      name: "valid_from",
+                      label: "Válido a partir de",
+                      type: "date",
+                      nullable: true,
+                    },
+                    { name: "valid_until", label: "Válido até", type: "date", nullable: true },
+                  ]}
+                >
+                  <p className="hint">
+                    Condição individual tem prioridade sobre perfil. Depois, aplica-se a maior faixa
+                    de quantidade. Preços especiais ficam restritos à administração.
+                  </p>
+                </CommandForm>
+                <div className="table-scroll">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Unidade</th>
+                        <th>Cliente ou perfil</th>
+                        <th>Quantidade mínima</th>
+                        <th>Preço</th>
+                        <th>Condição</th>
+                        <th>Validade</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {state.rules.map((rule) => (
+                        <tr key={rule.id}>
+                          <td>
+                            {productUnits(state).find((unit) => unit.value === rule.unit_id)?.label}
+                          </td>
+                          <td>
+                            {state.customers.find((customer) => customer.id === rule.customer_id)
+                              ?.name ??
+                              rule.profile ??
+                              "Todos"}
+                          </td>
+                          <td>{quantityBR(rule.minimum_quantity)}</td>
+                          <td>{moneyBR(rule.price)}</td>
+                          <td>
+                            <button
+                              onClick={() =>
+                                void command("price_rule_status", {
+                                  id: rule.id,
+                                  active: !rule.active,
+                                }).catch(() => {})
+                              }
+                            >
+                              {rule.active ? "Desativar condição" : "Reativar condição"}
+                            </button>
+                          </td>
+                          <td>
+                            {rule.valid_from ?? "Sem início"} / {rule.valid_until ?? "Sem fim"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </details>
+            </>
+          )}
+          {tab === "Estoque" && (
+            <>
+              <div className="notice">
+                Sacos, frações e quilos movimentam o mesmo saldo físico. Informe sempre a unidade
+                usada na contagem. Ajustes e perdas exigem motivo.
+              </div>
+              <CommandForm
+                title="Ajustar estoque ou registrar contagem"
+                kind="adjustment"
+                command={command}
+                fields={[
+                  {
+                    name: "unit_id",
+                    label: "Produto e unidade",
+                    type: "select",
+                    required: true,
+                    options: productUnits(state),
+                  },
+                  {
+                    name: "mode",
+                    label: "Operação",
+                    type: "select",
+                    required: true,
+                    options: [
+                      { value: "inventory", label: "Contagem física total" },
+                      { value: "in", label: "Entrada por ajuste" },
+                      { value: "out", label: "Saída por ajuste" },
+                      { value: "loss", label: "Perda ou avaria" },
+                    ],
+                  },
+                  { name: "quantity", label: "Quantidade", type: "number", required: true },
+                  {
+                    name: "base_unit_cost",
+                    label: "Custo por unidade-base para saldo acrescentado",
+                    type: "number",
+                    nullable: true,
+                    hint: "Deixe vazio se o custo é desconhecido.",
+                  },
+                  { name: "reference", label: "Referência" },
+                  { name: "reason", label: "Motivo e observações", required: true },
+                ]}
+                extra={(data) => ({ ...data, product_id: productForUnit(state, data.unit_id) })}
+              />
+              <section className="panel space">
+                <h2>Últimas 500 movimentações</h2>
+                <div className="table-scroll">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Data</th>
+                        <th>Produto</th>
+                        <th>Quantidade-base</th>
+                        <th>Operação</th>
+                        <th>Motivo</th>
+                        <th>Responsável</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {state.movements.map((movement) => (
+                        <tr key={movement.id}>
+                          <td>{new Date(movement.created_at).toLocaleString("pt-BR")}</td>
+                          <td>
+                            {
+                              state.products.find((product) => product.id === movement.product_id)
+                                ?.name
+                            }
+                          </td>
+                          <td>{quantityBR(movement.quantity)}</td>
+                          <td>
+                            {(
+                              {
+                                purchase: "Compra",
+                                sale: "Venda",
+                                return: "Devolução",
+                                adjustment: "Inventário/ajuste",
+                              } as Record<string, string>
+                            )[movement.kind] ?? movement.kind}
+                          </td>
+                          <td>{movement.reason}</td>
+                          <td>{movement.actor_id}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            </>
+          )}
+          {tab === "Clientes" && (
+            <div className="grid">
+              <CommandForm
+                title="Cadastrar cliente"
+                kind="customer"
+                command={command}
+                fields={[
+                  { name: "name", label: "Nome", required: true },
+                  { name: "contact", label: "Telefone ou e-mail" },
+                  {
+                    name: "profile",
+                    label: "Perfil comercial",
+                    type: "select",
+                    required: true,
+                    options: [
+                      { value: "balcao", label: "Balcão" },
+                      { value: "recorrente", label: "Recorrente" },
+                      { value: "atacado", label: "Atacado" },
+                      { value: "revendedor", label: "Revendedor" },
+                    ],
+                  },
+                  {
+                    name: "allow_credit",
+                    label: "Autorizar venda a prazo para este cliente",
+                    type: "checkbox",
+                  },
+                ]}
+              />
+              <section className="panel">
+                <h2>Clientes cadastrados</h2>
+                {state.customers.map((customer) => (
+                  <details key={customer.id}>
+                    <summary>
+                      {customer.name} · {customer.profile}
+                    </summary>
+                    <CommandForm
+                      title="Editar cliente"
+                      kind="customer"
+                      command={command}
+                      fields={[
+                        { name: "name", label: "Nome", value: customer.name, required: true },
+                        { name: "contact", label: "Contato", value: customer.contact },
+                        {
+                          name: "profile",
+                          label: "Perfil",
+                          value: customer.profile,
+                          required: true,
+                        },
+                        {
+                          name: "allow_credit",
+                          label: "Autorizar venda a prazo",
+                          type: "checkbox",
+                          value: customer.allow_credit,
+                        },
+                      ]}
+                      extra={(data) => ({ ...data, id: customer.id })}
+                    />
+                  </details>
+                ))}
+              </section>
+            </div>
+          )}
+          {tab === "Compras" && (
+            <>
+              <div className="grid">
+                <CommandForm
+                  title="Registrar compra e entrada"
+                  kind="purchase"
+                  command={command}
+                  fields={[
+                    {
+                      name: "unit_id",
+                      label: "Produto e unidade comprada",
+                      type: "select",
+                      required: true,
+                      options: productUnits(state),
+                    },
+                    {
+                      name: "quantity",
+                      label: "Quantidade comprada",
+                      type: "number",
+                      required: true,
+                    },
+                    {
+                      name: "supplier_id",
+                      label: "Fornecedor",
+                      type: "select",
+                      nullable: true,
+                      options: state.suppliers.map((supplier) => ({
+                        value: supplier.id,
+                        label: supplier.name,
+                      })),
+                    },
+                    {
+                      name: "goods_total",
+                      label: "Valor total das mercadorias",
+                      type: "number",
+                      nullable: true,
+                    },
+                    {
+                      name: "freight",
+                      label: "Frete atribuído a este produto",
+                      type: "number",
+                      nullable: true,
+                    },
+                    {
+                      name: "other_costs",
+                      label: "Outros custos atribuídos",
+                      type: "number",
+                      nullable: true,
+                    },
+                    { name: "reference", label: "Nota ou referência do lote" },
+                    {
+                      name: "purchased_at",
+                      label: "Data da compra",
+                      type: "date",
+                      required: true,
+                      value: localDay(),
+                    },
+                    { name: "due_on", label: "Vencimento", type: "date", nullable: true },
+                    { name: "reason", label: "Observações da entrada", required: true },
+                  ]}
+                  extra={(data) => ({ ...data, product_id: productForUnit(state, data.unit_id) })}
+                >
+                  <p className="hint">
+                    Registre um produto por entrada, com o frete atribuído a ele. Se algum custo for
+                    desconhecido, o lote ficará com custo pendente. Pagamentos são confirmados
+                    separadamente.
+                  </p>
+                </CommandForm>
+                <CommandForm
+                  title="Cadastrar fornecedor"
+                  kind="supplier"
+                  command={command}
+                  fields={[
+                    { name: "name", label: "Nome", required: true },
+                    { name: "contact", label: "Contato" },
+                  ]}
+                />
+              </div>
+              <section className="panel space">
+                <h2>Histórico de compras e custos</h2>
+                {state.purchases.map((purchase) => (
+                  <details key={purchase.id}>
+                    <summary>
+                      {purchase.purchased_at} ·{" "}
+                      {state.products.find((product) => product.id === purchase.product_id)?.name} ·{" "}
+                      {moneyBR(purchase.total)}
+                    </summary>
+                    <p className="hint">
+                      Fornecedor{" "}
+                      {state.suppliers.find((supplier) => supplier.id === purchase.supplier_id)
+                        ?.name ?? "Não informado"}{" "}
+                      · {quantityBR(purchase.quantity)} na unidade-base · custo médio da entrada{" "}
+                      {purchase.total === null
+                        ? "pendente"
+                        : moneyBR(Number(purchase.total) / Number(purchase.quantity))}{" "}
+                      · pago {moneyBR(purchase.paid)}
+                    </p>
+                    {purchase.total === null && (
+                      <CommandForm
+                        title="Completar custos da compra"
+                        kind="purchase_costs"
+                        command={command}
+                        fields={[
+                          {
+                            name: "goods_total",
+                            label: "Total das mercadorias",
+                            type: "number",
+                            required: true,
+                          },
+                          {
+                            name: "freight",
+                            label: "Frete atribuído",
+                            type: "number",
+                            required: true,
+                          },
+                          {
+                            name: "other_costs",
+                            label: "Outros custos",
+                            type: "number",
+                            required: true,
+                          },
+                          { name: "reason", label: "Motivo da atualização", required: true },
+                        ]}
+                        extra={(data) => ({ ...data, purchase_id: purchase.id })}
+                      />
+                    )}
+                    {purchase.total !== null && Number(purchase.paid) < Number(purchase.total) && (
+                      <CommandForm
+                        title="Confirmar pagamento da compra"
+                        kind="purchase_payment"
+                        command={command}
+                        fields={[
+                          { name: "amount", label: "Valor pago", type: "number", required: true },
+                          {
+                            name: "method",
+                            label: "Forma",
+                            type: "select",
+                            required: true,
+                            options: paymentOptions,
+                          },
+                          {
+                            name: "confirmed",
+                            label: "Confirmei o pagamento ao fornecedor",
+                            type: "checkbox",
+                            required: true,
+                          },
+                        ]}
+                        extra={(data) => ({ ...data, purchase_id: purchase.id })}
+                      />
+                    )}
+                  </details>
+                ))}
+              </section>
+            </>
+          )}
+          {tab === "Caixa" && (
+            <>
+              <div className="grid">
+                {state.cash ? (
+                  <CommandForm
+                    title="Fechar caixa"
+                    kind="cash_close"
+                    command={command}
+                    fields={[
+                      {
+                        name: "counted",
+                        label: "Dinheiro contado no caixa",
+                        type: "number",
+                        required: true,
+                      },
+                      { name: "notes", label: "Observações e justificativa de diferença" },
+                    ]}
+                    label="Confirmar fechamento"
+                  >
+                    <p className="hint">
+                      Aberto em {new Date(state.cash.opened_at).toLocaleString("pt-BR")} com{" "}
+                      {moneyBR(state.cash.opening)} em dinheiro.
+                    </p>
+                  </CommandForm>
+                ) : (
+                  <CommandForm
+                    title="Abrir caixa"
+                    kind="cash_open"
+                    command={command}
+                    fields={[
+                      {
+                        name: "opening",
+                        label: "Dinheiro inicial",
+                        type: "number",
+                        required: true,
+                        value: 0,
+                      },
+                    ]}
+                  />
+                )}
+                <CommandForm
+                  title="Registrar despesa operacional"
+                  kind="expense"
+                  command={command}
+                  fields={[
+                    { name: "description", label: "Descrição", required: true },
+                    { name: "amount", label: "Valor", type: "number", required: true },
+                    {
+                      name: "due_on",
+                      label: "Vencimento",
+                      type: "date",
+                      required: true,
+                      value: localDay(),
+                    },
+                    {
+                      name: "paid_on",
+                      label: "Data do pagamento (se já pago)",
+                      type: "date",
+                      nullable: true,
+                    },
+                    {
+                      name: "method",
+                      label: "Forma do pagamento",
+                      type: "select",
+                      nullable: true,
+                      options: paymentOptions,
+                    },
+                    {
+                      name: "confirmed",
+                      label: "Confirmei o pagamento, quando informado",
+                      type: "checkbox",
+                    },
+                  ]}
+                />
+              </div>
+              <section className="panel space">
+                <h2>Fechamentos</h2>
+                {state.cash_history.map((cash) => (
+                  <p key={cash.id}>
+                    {new Date(cash.opened_at).toLocaleString("pt-BR")} ·{" "}
+                    {cash.closed_at
+                      ? `Esperado ${moneyBR(cash.expected)} · contado ${moneyBR(cash.counted)} · diferença ${moneyBR(Number(cash.counted) - Number(cash.expected))}`
+                      : "Aberto"}
+                  </p>
+                ))}
+              </section>
+            </>
+          )}
+          {tab === "Financeiro" && (
+            <section className="panel space">
+              <h2>Despesas e contas a pagar</h2>
+              {state.expenses.map((expense) => (
+                <details key={expense.id}>
+                  <summary>
+                    {expense.description} · {moneyBR(expense.amount)} ·{" "}
+                    {expense.paid_on
+                      ? `Pago em ${expense.paid_on}`
+                      : `A pagar em ${expense.due_on}`}
+                  </summary>
+                  {!expense.paid_on && (
+                    <CommandForm
+                      title="Confirmar pagamento da despesa"
+                      kind="expense_payment"
+                      command={command}
+                      fields={[
+                        {
+                          name: "paid_on",
+                          label: "Data do pagamento",
+                          type: "date",
+                          required: true,
+                          value: localDay(),
+                        },
+                        {
+                          name: "method",
+                          label: "Forma",
+                          type: "select",
+                          required: true,
+                          options: paymentOptions,
+                        },
+                        {
+                          name: "confirmed",
+                          label: "Confirmei a movimentação financeira",
+                          type: "checkbox",
+                          required: true,
+                        },
+                      ]}
+                      extra={(data) => ({ ...data, expense_id: expense.id })}
+                    />
+                  )}
+                </details>
+              ))}
+              <h2 className="space">Resultado por produto</h2>
+              {report?.by_product.map((row) => (
+                <p key={row.product_name}>
+                  {row.product_name} · receita {moneyBR(row.revenue)} · custo{" "}
+                  {moneyBR(row.goods_cost)} · diferença{" "}
+                  {moneyBR(
+                    row.goods_cost === null ? null : Number(row.revenue) - Number(row.goods_cost),
+                  )}
+                </p>
+              ))}
+              <h2 className="space">Resultado por cliente</h2>
+              {report?.by_customer.map((row) => (
+                <p key={row.name}>
+                  {row.name} · receita {moneyBR(row.revenue)} · contribuição{" "}
+                  {moneyBR(row.contribution)}
+                  {row.partial_sales ? " · custos pendentes, resultado parcial" : ""}
+                </p>
+              ))}
+              {!!report?.pending_purchase_costs && (
+                <p className="notice warning">
+                  {report.pending_purchase_costs} compra(s) com custos pendentes. O saldo a pagar
+                  ainda é parcial.
+                </p>
+              )}
+              <p className="hint">
+                A diferença por produto ainda não desconta os custos atribuídos à venda e as
+                despesas gerais.
+              </p>
+            </section>
+          )}
+          {tab === "Importar" && <CommercialImport command={command} state={state} />}
+        </fieldset>
+      )}
+    </main>
+  );
+}

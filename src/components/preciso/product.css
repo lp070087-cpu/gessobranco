@@ -1,0 +1,188 @@
+/* Shared materials and motion use the approved public presentation as their source. */
+:root {
+  --radius: 0.5rem;
+  --background: #f8f7f3;
+  --foreground: #242622;
+  --surface: #fff;
+  --surface-elevated: #f0eee7;
+  --card: #fff;
+  --card-foreground: #242622;
+  --popover: #fff;
+  --popover-foreground: #242622;
+  --primary: #806537;
+  --primary-foreground: #fff;
+  --accent: #806537;
+  --accent-foreground: #fff;
+  --gold: #806537;
+  --gold-soft: #80653712;
+  --secondary: #eeece6;
+  --secondary-foreground: #242622;
+  --muted: #eeece6;
+  --muted-foreground: #62655e;
+  --border: #dcded5;
+  --input: #dcded5;
+  --ring: #806537;
+  --navy: #44483f;
+  --destructive: #b42318;
+  --destructive-foreground: #fff;
+  --sidebar: #fff;
+  --sidebar-foreground: #242622;
+  --sidebar-primary: #806537;
+  --sidebar-primary-foreground: #fff;
+  --sidebar-accent: #eeece6;
+  --sidebar-accent-foreground: #242622;
+  --sidebar-border: #dcded5;
+  --sidebar-ring: #806537;
+  --chart-1: #806537;
+  --chart-2: #496047;
+  --chart-3: #606765;
+  --chart-4: #a17633;
+  --chart-5: #a14732;
+  --motion-ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --motion-fast: 150ms;
+  --motion-medium: 300ms;
+  --motion-slow: 600ms;
+}
+
+body {
+  background-image: none;
+}
+h1,
+h2,
+h3 {
+  font-family: Inter, system-ui, sans-serif;
+}
+:is(.preciso-admin, .preciso-client, .preciso-auth) {
+  color: var(--foreground);
+}
+:is(.preciso-admin, .preciso-client, .preciso-auth)
+  :is(.shadow-2xl, .shadow-xl, .shadow-lg, .auth-card, .client-stat) {
+  box-shadow: none;
+}
+:is(.preciso-admin, .preciso-client, .preciso-auth) :is(.bg-gradient-to-br, .bg-gradient-to-r) {
+  background-image: none;
+}
+.preciso-auth > .absolute {
+  display: none;
+}
+.preciso-card {
+  background-image: none;
+  box-shadow: none;
+}
+.preciso-card:hover {
+  box-shadow: none;
+}
+.preciso-button,
+button,
+input,
+select,
+textarea {
+  transition:
+    border-color var(--motion-fast) var(--motion-ease),
+    background-color var(--motion-fast) var(--motion-ease),
+    color var(--motion-fast) var(--motion-ease);
+}
+:is(.preciso-admin, .preciso-client, .preciso-auth) :is(input, select, textarea) {
+  min-width: 0;
+}
+:is(.preciso-admin, .preciso-client) table {
+  width: 100%;
+}
+:is(.preciso-admin, .preciso-client) th {
+  font-weight: 500;
+}
+:is(.preciso-admin, .preciso-client) td {
+  vertical-align: middle;
+}
+:is(.preciso-admin, .preciso-client, .preciso-auth) :is(.text-emerald-400, .text-emerald-300) {
+  color: #267047;
+}
+:is(.preciso-admin, .preciso-client, .preciso-auth) .text-red-400 {
+  color: #b42318;
+}
+[data-state="open"][role="dialog"] {
+  width: min(100% - 2rem, var(--dialog-width, 36rem));
+}
+[role="dialog"] {
+  overscroll-behavior: contain;
+  padding-bottom: max(1.5rem, env(safe-area-inset-bottom));
+}
+:is(.preciso-admin, .preciso-client, .preciso-auth) button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+.editorial-site .editorial-enter {
+  animation: none;
+}
+.ouro-enter {
+  animation: ouro-reveal var(--motion-slow) var(--motion-ease) both;
+}
+.editorial-site .editorial-hero-photo img {
+  animation: ouro-image var(--motion-slow) var(--motion-ease) both;
+}
+.editorial-site .editorial-photo-action {
+  transition:
+    background-color var(--motion-medium),
+    transform var(--motion-medium) var(--motion-ease);
+}
+.editorial-site .editorial-button {
+  transition:
+    background-color var(--motion-medium) var(--motion-ease),
+    transform var(--motion-fast) var(--motion-ease);
+}
+.editorial-site .editorial-button:active {
+  transform: translateY(1px);
+}
+@keyframes ouro-reveal {
+  from {
+    opacity: 0.65;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes ouro-image {
+  from {
+    opacity: 0.7;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@media (hover: hover) {
+  .editorial-site
+    :is(.editorial-service-photo, .editorial-gallery-item):hover
+    .editorial-photo-action {
+    background: #e8e1d2;
+    transform: translateY(-2px);
+  }
+}
+@media (max-width: 640px) {
+  .editorial-site .editorial-logo {
+    font-size: 21px;
+    letter-spacing: -1px;
+  }
+  .editorial-site .editorial-logo small {
+    font-size: 6px;
+    letter-spacing: 1.2px;
+  }
+  :is(.preciso-admin, .preciso-client, .preciso-auth) :is(input, select, textarea) {
+    font-size: 16px;
+  }
+  :is(.preciso-admin, .preciso-client) main {
+    overflow-wrap: anywhere;
+  }
+  :is(.preciso-admin, .preciso-client) :is(button, a) {
+    touch-action: manipulation;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ouro-enter,
+  .editorial-site .editorial-hero-photo img {
+    animation: none;
+  }
+  :is(.preciso-admin, .preciso-client, .preciso-auth) button:active:not(:disabled) {
+    transform: none;
+  }
+}

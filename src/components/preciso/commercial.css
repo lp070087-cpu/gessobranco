@@ -1,0 +1,234 @@
+.commercial {
+  max-width: 1440px;
+  margin: auto;
+  padding: 24px clamp(16px, 3vw, 40px) 60px;
+}
+.commercial-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 22px;
+  margin-bottom: 20px;
+}
+.commercial-header h1 {
+  font-size: 24px;
+  font-weight: 600;
+}
+.commercial small,
+.commercial .hint {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.commercial nav {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 14px;
+  margin-bottom: 20px;
+}
+.commercial nav button {
+  flex-shrink: 0;
+  padding: 10px 16px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 13px;
+}
+.commercial nav button[aria-current] {
+  background: var(--foreground);
+  color: var(--background);
+  border-color: var(--foreground);
+}
+.commercial .panel {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: 8px;
+  padding: 22px;
+  min-width: 0;
+}
+.commercial .panel h2 {
+  font-size: 19px;
+  font-weight: 600;
+  margin-bottom: 16px;
+}
+.commercial .grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+.commercial .stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 14px;
+  margin-bottom: 24px;
+}
+.commercial .stats strong {
+  display: block;
+  font-size: 23px;
+  font-weight: 500;
+  margin-block: 9px;
+}
+.commercial .fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 14px;
+}
+.commercial label {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  font-size: 12px;
+  margin-bottom: 14px;
+}
+.commercial :is(input, select, textarea) {
+  padding: 11px 12px;
+  border: 1px solid var(--border);
+  background: var(--background);
+  color: var(--foreground);
+  border-radius: 5px;
+  width: 100%;
+  min-height: 44px;
+}
+.commercial input[type="checkbox"] {
+  width: 18px;
+  min-height: 18px;
+}
+.commercial label.check {
+  flex-direction: row;
+  align-items: center;
+}
+.commercial .actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-block: 16px;
+}
+.commercial .action {
+  padding: 11px 16px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  min-height: 44px;
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.commercial .primary {
+  background: var(--foreground);
+  color: var(--background);
+  border-color: var(--foreground);
+}
+.commercial button:disabled {
+  opacity: 0.5;
+}
+.commercial .table-scroll {
+  overflow-x: auto;
+}
+.commercial table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 12px;
+}
+.commercial th,
+.commercial td {
+  text-align: left;
+  padding: 13px 10px;
+  border-bottom: 1px solid var(--border);
+}
+.commercial th {
+  font-weight: 500;
+  color: var(--muted-foreground);
+  white-space: nowrap;
+}
+.commercial td button {
+  text-decoration: underline;
+  min-height: 40px;
+}
+.commercial .notice {
+  padding: 14px 18px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  margin-bottom: 20px;
+  border-radius: 5px;
+  font-size: 13px;
+}
+.commercial .error {
+  border-color: var(--destructive);
+  color: var(--destructive);
+}
+.commercial .warning {
+  color: #806119;
+}
+.commercial details {
+  margin-block: 14px;
+  border-top: 1px solid var(--border);
+  padding-top: 14px;
+}
+.commercial summary {
+  cursor: pointer;
+  min-height: 44px;
+  font-size: 14px;
+  font-weight: 500;
+}
+.commercial .line {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr 1fr 1fr auto;
+  gap: 10px;
+  align-items: end;
+}
+.commercial .receipt {
+  max-width: 620px;
+  padding: 24px;
+  background: white;
+  color: #222;
+  border: 1px solid #ccc;
+}
+.commercial .sale-total {
+  font-size: 32px;
+  font-weight: 500;
+  letter-spacing: -1px;
+}
+.commercial .full {
+  grid-column: 1/-1;
+}
+.commercial .space {
+  margin-top: 20px;
+}
+@media (max-width: 760px) {
+  .commercial .grid {
+    grid-template-columns: 1fr;
+  }
+  .commercial .line {
+    grid-template-columns: 1fr 1fr;
+  }
+  .commercial-header {
+    align-items: flex-start;
+  }
+  .commercial-header h1 {
+    font-size: 20px;
+  }
+  .commercial .panel {
+    padding: 18px;
+  }
+}
+@media print {
+  body:has(.receipt) * {
+    visibility: hidden;
+  }
+  body:has(.receipt) .receipt,
+  body:has(.receipt) .receipt * {
+    visibility: visible;
+  }
+  .commercial .receipt {
+    position: absolute;
+    inset: 0 auto auto 0;
+    border: 0;
+    width: 100%;
+  }
+  .commercial .receipt button {
+    display: none;
+  }
+}
