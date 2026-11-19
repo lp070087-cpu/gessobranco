@@ -100,6 +100,9 @@ export type Purchase = {
   reference: string;
   quantity: string;
   total: string | null;
+  goods_total: string | null;
+  freight: string | null;
+  other_costs: string | null;
   paid: string;
   due_on: string | null;
   purchased_at: string;
@@ -136,6 +139,7 @@ export type CommercialState = {
   lots: { id: string; product_id: string; remaining: string; unit_cost: string | null }[];
 };
 export type Report = {
+  daily: { day: string; good: number; medium: number; bad: number; pending: number }[];
   pending_purchase_costs: number;
   by_customer: {
     name: string;
@@ -205,13 +209,17 @@ export async function commercialFetch<T>(
   path: string,
   body?: unknown,
   signal?: AbortSignal,
+  method = body === undefined ? "GET" : "POST",
 ): Promise<T> {
   const response = await fetch(`/api/neon/${path}`, {
-    method: body === undefined ? "GET" : "POST",
+    method,
     credentials: "same-origin",
     headers: body === undefined ? undefined : { "Content-Type": "application/json" },
     body: body === undefined ? undefined : JSON.stringify(body),
     signal: signal ?? AbortSignal.timeout(20000),
+  }).catch((failure: unknown) => {
+    if (signal?.aborted) throw failure;
+    throw new Error("Não foi possível conectar. Confira sua conexão e tente novamente.");
   });
   const data = await response
     .json()

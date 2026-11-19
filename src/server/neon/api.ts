@@ -5,6 +5,7 @@ import { database } from "./db";
 import { hashPassword, verifyPassword } from "./passwords";
 import { projects, quotes, services, sessions, users } from "./schema";
 import { commercialRequest, publicCatalogue } from "./commercial";
+import { companyRequests, createCompanyRequest } from "./company-requests";
 
 const COOKIE = "preciso_session";
 const sha256 = (value: string) => createHash("sha256").update(value).digest("hex");
@@ -182,6 +183,16 @@ export async function handleNeonRequest(request: Request): Promise<Response> {
   try {
     const db = database();
     if (path === "catalogue" && request.method === "GET") return await publicCatalogue();
+    if (path === "company-requests" && request.method === "POST") {
+      const input = await body(request);
+      const email = z.object({ email: z.string().trim().email().max(254) }).parse(input).email;
+      if (
+        !(await withinRateLimit(db, "company-requests:global", 120)) ||
+        !(await withinRateLimit(db, `company-requests:${email.toLowerCase()}`, 8))
+      )
+        return json({ error: "Muitas solicitações. Aguarde 15 minutos." }, 429);
+      return json(await createCompanyRequest(db, input), 201);
+    }
     if (path === "auth/register" && request.method === "POST") {
       const input = registration.parse(await body(request));
       if (!(await allowAuthentication(db, request, "register", input.email)))
@@ -237,6 +248,21 @@ export async function handleNeonRequest(request: Request): Promise<Response> {
     const user = await actor(request);
     if (!user) return json({ error: "Autenticação necessária." }, 401);
     if (path === "auth/me" && request.method === "GET") return json({ user });
+    if (path === "admin/company-requests") {
+      if (user.role !== "admin") return json({ error: "Acesso restrito à administração." }, 403);
+      if (request.method === "GET") return json(await companyRequests(db));
+      if (request.method === "PATCH") {
+        const input = z
+          .object({ id: z.string().uuid(), status: z.enum(["new", "contacted", "closed"]) })
+          .parse(await body(request));
+        const result =
+          await db.execute(sql`UPDATE preciso.company_requests SET status=${input.status}
+          WHERE id=${input.id}::uuid RETURNING id`);
+        return result.rows.length
+          ? json({ ok: true })
+          : json({ error: "Solicitação não encontrada." }, 404);
+      }
+    }
     if (path.startsWith("commercial/"))
       return await commercialRequest(request, path, user, () => body(request));
     if (path === "admin/services" && request.method === "GET") {

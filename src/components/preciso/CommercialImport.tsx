@@ -2,6 +2,7 @@ import { useState } from "react";
 import { importColumns, parseCsv, previewProductImport } from "@/lib/commercial-import";
 import { moneyBR, type CommercialState } from "@/lib/commercial-client";
 import type { Command } from "./CommercialForms";
+import { readDocument } from "@/lib/document-import";
 
 const labels: Record<string, string> = {
   name: "Nome",
@@ -38,7 +39,9 @@ export function CommercialImport({ state, command }: { state: CommercialState; c
         const { readSheet } = await import("read-excel-file/browser");
         const sheet = await readSheet(file, 1);
         parsed = sheet.map((row) => row.map((cell) => (cell === null ? "" : String(cell))));
-      } else throw new Error("Use um arquivo XLSX ou CSV.");
+      } else if (/\.pdf$/i.test(file.name)) parsed = await readDocument(file, "pdf");
+      else if (/\.xls$/i.test(file.name)) parsed = await readDocument(file, "xls");
+      else throw new Error("Use um arquivo PDF, XLS, XLSX ou CSV.");
       if (parsed.length < 2 || parsed.length > 201)
         throw new Error("O arquivo deve conter o cabeçalho e até 200 linhas de produtos.");
       setRows(parsed);
@@ -80,11 +83,15 @@ export function CommercialImport({ state, command }: { state: CommercialState; c
         arquivos forem fornecidos. No XLSX, será lida a primeira aba; a primeira linha deve conter
         os títulos das colunas.
       </p>
+      <p className="hint">
+        PDF: use uma tabela com texto selecionável e confira a prévia. Fotos e digitalizações
+        precisam ser convertidas em planilha.
+      </p>
       <label className="space">
-        Planilha XLSX ou CSV
+        Documento PDF, Excel ou CSV
         <input
           type="file"
-          accept=".xlsx,.csv"
+          accept=".pdf,.xls,.xlsx,.csv"
           disabled={busy}
           onChange={(event) => void read(event.target.files?.[0])}
         />

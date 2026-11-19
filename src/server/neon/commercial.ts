@@ -1,6 +1,8 @@
 import { sql } from "drizzle-orm";
 import { z } from "zod";
 import { database } from "./db";
+import { reportDownload } from "./report-download";
+import type { Report } from "@/lib/commercial-client";
 
 const quantity = z
   .number()
@@ -285,7 +287,13 @@ export async function commercialRequest(
         (SELECT COALESCE(jsonb_agg(p),'[]') FROM preciso.commercial_payments p WHERE p.sale_id=r.id) AS payments
         FROM preciso.commercial_results r ORDER BY r.created_at DESC LIMIT 500) s),
       'movements',(SELECT COALESCE(jsonb_agg(m),'[]') FROM (SELECT * FROM preciso.commercial_movements ORDER BY created_at DESC LIMIT 500) m),
-      'purchases',(SELECT COALESCE(jsonb_agg(p),'[]') FROM (SELECT * FROM preciso.commercial_purchases ORDER BY purchased_at DESC LIMIT 500) p),
+      'purchases',(SELECT COALESCE(jsonb_agg(v ORDER BY v.purchased_at DESC),'[]') FROM (
+        SELECT p.*, o.payload->>'goods_total' goods_total,o.payload->>'freight' freight,o.payload->>'other_costs' other_costs
+        FROM (SELECT * FROM preciso.commercial_purchases ORDER BY purchased_at DESC,id LIMIT 500) p
+        LEFT JOIN LATERAL (SELECT payload FROM preciso.commercial_operations
+          WHERE kind IN ('purchase','purchase_costs') AND result->>'id'=p.id::text
+          ORDER BY (kind='purchase_costs') DESC LIMIT 1) o ON true
+      ) v),
       'expenses',(SELECT COALESCE(jsonb_agg(e),'[]') FROM (SELECT * FROM preciso.commercial_expenses ORDER BY due_on DESC LIMIT 500) e),
       'purchase_payments',(SELECT COALESCE(jsonb_agg(v),'[]') FROM (SELECT * FROM preciso.commercial_purchase_payments ORDER BY created_at DESC LIMIT 500) v)
     ) AS data`);
@@ -293,10 +301,22 @@ export async function commercialRequest(
   }
   if (path === "commercial/report" && request.method === "GET") {
     const url = new URL(request.url);
+    const format = url.searchParams.get("format");
     const start = date.parse(url.searchParams.get("start"));
     const end = date.parse(url.searchParams.get("end"));
     if (end < start) return json({ error: "Confira o período do relatório." }, 400);
     const result = await db.execute(sql`SELECT jsonb_build_object(
+      'daily',(SELECT COALESCE(jsonb_agg(v ORDER BY v.day),'[]') FROM (
+        SELECT (created_at AT TIME ZONE 'America/Recife')::date AS day,
+          count(*) FILTER (WHERE NOT partial AND contribution>0) AS good,
+          count(*) FILTER (WHERE NOT partial AND contribution=0) AS medium,
+          count(*) FILTER (WHERE NOT partial AND contribution<0) AS bad,
+          count(*) FILTER (WHERE partial) AS pending
+        FROM preciso.commercial_results
+        WHERE (created_at AT TIME ZONE 'America/Recife')::date BETWEEN ${start}::date AND ${end}::date
+          AND status <> 'cancelled'
+        GROUP BY 1
+      ) v),
       'revenue',(SELECT COALESCE(sum(revenue-returned_revenue),0) FROM preciso.commercial_results WHERE (created_at AT TIME ZONE 'America/Recife')::date BETWEEN ${start}::date AND ${end}::date),
       'goods_cost',(SELECT sum(goods_cost) FROM preciso.commercial_results WHERE (created_at AT TIME ZONE 'America/Recife')::date BETWEEN ${start}::date AND ${end}::date),
       'contribution',(SELECT sum(contribution) FROM preciso.commercial_results WHERE (created_at AT TIME ZONE 'America/Recife')::date BETWEEN ${start}::date AND ${end}::date),
@@ -319,7 +339,19 @@ export async function commercialRequest(
         FROM preciso.commercial_sale_items i JOIN preciso.commercial_sales s ON s.id=i.sale_id
         WHERE (s.created_at AT TIME ZONE 'America/Recife')::date BETWEEN ${start}::date AND ${end}::date GROUP BY i.product_name) v)
     ) AS data`);
-    return json(result.rows[0]?.data);
+    const report = result.rows[0]?.data as Report;
+    const first = Date.parse(start);
+    const last = Date.parse(end);
+    const length = (last - first) / 86400000 + 1;
+    if (length <= 367) {
+      const recorded = new Map(report.daily.map((row) => [row.day, row]));
+      report.daily = Array.from({ length }, (_, index) => {
+        const day = new Date(first + index * 86400000).toISOString().slice(0, 10);
+        return recorded.get(day) ?? { day, good: 0, medium: 0, bad: 0, pending: 0 };
+      });
+    }
+    if (format === "pdf" || format === "xlsx") return reportDownload(report, start, end, format);
+    return json(report);
   }
   if (request.method !== "POST") return json({ error: "Operação indisponível." }, 405);
   const kind = path.replace(/^commercial\//, "");

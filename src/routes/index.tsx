@@ -4,6 +4,7 @@ import { ArrowDown, ArrowLeft, ArrowRight, ArrowUpRight, Menu, Plus, X } from "l
 import * as Dialog from "@radix-ui/react-dialog";
 import { Calculator } from "@/components/preciso/Calculator";
 import { PublicProducts } from "@/components/preciso/PublicProducts";
+import { CompanyRequestDialog } from "@/components/preciso/CompanyRequestDialog";
 import { SERVICES } from "@/components/preciso/services";
 import "@/components/preciso/client-experience.css";
 import "@/components/preciso/public-editorial.css";
@@ -79,6 +80,7 @@ const PROCESS = [
 ];
 function Index() {
   const [menu, setMenu] = useState(false);
+  const [requestService, setRequestService] = useState(false);
   const [gallery, setGallery] = useState<number | null>(null);
   const menuButton = useRef<HTMLButtonElement>(null);
   const galleryButton = useRef<HTMLButtonElement | null>(null);
@@ -159,6 +161,21 @@ function Index() {
         )}
       </header>
       <main id="conteudo">
+        <section className="editorial-entry" aria-labelledby="entry-title">
+          <img src={bannerImg} alt="" width="1600" height="1000" fetchPriority="high" />
+          <div className="editorial-container editorial-entry-content">
+            <p className="editorial-kicker">SOLUÇÕES EM GESSO</p>
+            <h1 id="entry-title">OURO BRANCO</h1>
+            <div className="editorial-entry-actions">
+              <a className="editorial-button" href="#planejar">
+                Orçamento de serviço <ArrowUpRight size={16} />
+              </a>
+              <a className="editorial-button" href="#produtos">
+                Comprar material <ArrowUpRight size={16} />
+              </a>
+            </div>
+          </div>
+        </section>
         <section id="top" className="editorial-container editorial-hero">
           <div className="editorial-hero-copy" data-reveal>
             <p className="editorial-kicker">
@@ -368,10 +385,25 @@ function Index() {
                 Já tem um projeto? Acesse sua conta <ArrowUpRight size={17} aria-hidden="true" />
               </Link>
             </div>
-            <Calculator />
+            <div>
+              <Calculator />
+              <button
+                type="button"
+                className="editorial-text-link mt-6"
+                onClick={() => setRequestService(true)}
+              >
+                Solicitar orçamento de serviço <ArrowUpRight size={17} aria-hidden="true" />
+              </button>
+            </div>
           </div>
         </section>
       </main>
+      {requestService && (
+        <CompanyRequestDialog
+          context={{ kind: "service" }}
+          close={() => setRequestService(false)}
+        />
+      )}
       <footer className="editorial-footer">
         <div className="editorial-container">
           <div className="editorial-footer-top">
