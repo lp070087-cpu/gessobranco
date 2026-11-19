@@ -2,6 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import ts from "typescript";
+import { build } from "esbuild";
+import { readSheet } from "read-excel-file/node";
 import { sqlStatements } from "../scripts/sql-statements.mjs";
 
 const source = await readFile(new URL("../src/lib/commercial-import.ts", import.meta.url), "utf8");
@@ -20,6 +22,40 @@ test("CSV preserves delimiters, quoted newlines, escaped quotes and PT-BR prices
   assert.equal(spreadsheetNumber("22.50"), 22.5);
   assert.ok(Number.isNaN(spreadsheetNumber("=1+1")));
   assert.throws(() => parseCsv('"sem fim'), /aspas/);
+  assert.deepEqual(parseCsv('\uFEFFNome;Unidade\rChapa 12";un'), [
+    ["Nome", "Unidade"],
+    ['Chapa 12"', "un"],
+  ]);
+});
+
+test("exported Excel opens with separate sheets and preserves amounts and literal notes", async () => {
+  const bundled = await build({
+    entryPoints: ["src/lib/spreadsheet-export.ts"],
+    bundle: true,
+    write: false,
+    platform: "browser",
+    format: "esm",
+  });
+  const { makeSpreadsheet } = await import(
+    `data:text/javascript;base64,${Buffer.from(bundled.outputFiles[0].text).toString("base64")}`
+  );
+  const book = Buffer.from(
+    makeSpreadsheet([
+      {
+        name: "Resumo",
+        rows: [
+          ["Conta", "Valor"],
+          ["Pix & loja", 79.21],
+        ],
+      },
+      { name: "Extrato", rows: [["Observação"], ["=texto literal"]] },
+    ]),
+  );
+  assert.deepEqual(await readSheet(book, "Resumo"), [
+    ["Conta", "Valor"],
+    ["Pix & loja", 79.21],
+  ]);
+  assert.deepEqual(await readSheet(book, "Extrato"), [["Observação"], ["=texto literal"]]);
 });
 
 test("import preview detects duplicates and refuses unconfigured conversions", () => {

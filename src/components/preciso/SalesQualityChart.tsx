@@ -15,12 +15,13 @@ import {
   qualityLabel,
   type QualityThresholds,
   type SalesQuality,
+  defaultQualityColors,
 } from "@/lib/sales-quality";
 
 const levels = [
-  { key: "good", label: "Bom", color: "var(--chart-good)" },
-  { key: "medium", label: "Médio", color: "var(--chart-medium)" },
-  { key: "bad", label: "Ruim", color: "var(--chart-bad)" },
+  { key: "good", label: "Bom", dash: undefined },
+  { key: "medium", label: "Médio", dash: "6 3" },
+  { key: "bad", label: "Ruim", dash: "2 3" },
 ] as const;
 const axisCurrency = new Intl.NumberFormat("pt-BR", {
   style: "currency",
@@ -44,6 +45,7 @@ export function SalesQualityChart({
   const [animate, setAnimate] = useState(false);
   const route = `commercial/quality?start=${period.start}&end=${period.end}`;
   const chart = loaded?.route === route ? loaded.chart : null;
+  const colors = chart?.thresholds.colors ?? defaultQualityColors;
   const granularity = chart?.granularity ?? "day";
   const emptyDays = [...new Set([period.start, period.end])];
   const points =
@@ -103,9 +105,9 @@ export function SalesQualityChart({
       </p>
       <div className="actions">
         <ul className="quality-legend" aria-label="Legenda">
-          {levels.map(({ key, label, color }) => (
+          {levels.map(({ key, label }) => (
             <li key={key}>
-              <span style={{ backgroundColor: color }} />
+              <span style={{ backgroundColor: colors[key] }} />
               {label}
             </li>
           ))}
@@ -116,7 +118,7 @@ export function SalesQualityChart({
             className="action"
             onClick={() => setSettings(settings ? null : { ...chart.thresholds })}
           >
-            {settings ? "Fechar ajustes" : "Configurar margens"}
+            {settings ? "Fechar ajustes" : "Configurar margens e cores"}
           </button>
         )}
       </div>
@@ -156,8 +158,25 @@ export function SalesQualityChart({
               />
             </label>
           </div>
+          <div className="ouro-color-fields">
+            {levels.map(({ key, label }) => (
+              <label key={key}>
+                Cor de {label}
+                <input
+                  type="color"
+                  value={(settings.colors ?? colors)[key]}
+                  onChange={(event) =>
+                    setSettings({
+                      ...settings,
+                      colors: { ...(settings.colors ?? colors), [key]: event.target.value },
+                    })
+                  }
+                />
+              </label>
+            ))}
+          </div>
           <button className="action primary" disabled={saving}>
-            {saving ? "Salvando…" : "Salvar limites"}
+            {saving ? "Salvando…" : "Salvar margens e cores"}
           </button>
         </form>
       )}
@@ -198,7 +217,8 @@ export function SalesQualityChart({
                 type="linear"
                 dataKey={level.key}
                 name={level.label}
-                stroke={level.color}
+                stroke={colors[level.key]}
+                strokeDasharray={level.dash}
                 strokeWidth={2.5}
                 connectNulls
                 activeDot={{ r: 5 }}

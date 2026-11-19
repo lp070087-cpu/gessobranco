@@ -330,6 +330,90 @@
   height: 3px;
   border-radius: 3px;
 }
+.commercial .ouro-form-group {
+  padding: 18px;
+  margin: 0 0 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+.ouro-form-group h3 {
+  font-size: 15px;
+  font-weight: 650;
+  margin-bottom: 10px;
+}
+.ouro-upload-preview {
+  display: block;
+  max-width: min(100%, 290px);
+  max-height: 175px;
+  width: auto;
+  border-radius: 10px;
+  object-fit: contain;
+  margin-block: 8px 14px;
+}
+.ouro-chips,
+.ouro-color-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  list-style: none;
+  padding: 0;
+  margin-block: 14px;
+}
+.ouro-chips li {
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 99px;
+  font-size: 13px;
+}
+.commercial .ouro-color-fields input {
+  width: 56px;
+  height: 38px;
+  padding: 4px;
+}
+.ouro-map {
+  margin-top: 14px;
+}
+.ouro-map iframe {
+  display: block;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  width: 100%;
+  height: clamp(250px, 44vw, 390px);
+}
+.ouro-map a {
+  display: inline-block;
+  margin-top: 10px;
+  text-decoration: underline;
+}
+.cfo-simulation {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+  gap: 12px;
+  padding-top: 12px;
+}
+.cfo-simulation > div {
+  border: 1px solid var(--border);
+  padding: 14px;
+  border-radius: 10px;
+}
+.cfo-simulation strong {
+  display: block;
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+}
+.ouro-guide {
+  padding-inline-start: 20px;
+  line-height: 1.6;
+}
+.ouro-guide li {
+  margin-block: 8px;
+}
+.commercial .stats strong {
+  font-variant-numeric: tabular-nums;
+}
+.ouro-report-anchor {
+  scroll-margin-top: 20px;
+}
 .commercial .overview-stats {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }

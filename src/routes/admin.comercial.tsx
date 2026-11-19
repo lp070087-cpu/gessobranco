@@ -366,6 +366,11 @@ function Commercial() {
               )}
               {tab === "Financeiro" && (
                 <>
+                  <div className="actions">
+                    <Link to="/admin/cfo" search={{ secao: "despesas" }} className="action">
+                      Despesas e comprovantes Pix
+                    </Link>
+                  </div>
                   <form
                     className="actions"
                     onSubmit={(event) => {
@@ -853,9 +858,10 @@ function Commercial() {
                       })}
                     >
                       <p className="hint">
-                        Registre um produto por entrada, com o frete atribuído a ele. Se algum custo
-                        for desconhecido, o lote ficará com custo pendente. Pagamentos são
-                        confirmados separadamente.
+                        Escolha o produto e informe a quantidade na unidade selecionada. Coloque o
+                        valor total da mercadoria e o frete em campos separados. Use zero para
+                        custos que não ocorreram. Se faltar um valor, o lote fica com custo
+                        pendente.
                       </p>
                       <PurchaseExamples products={state.products} />
                     </CommandForm>

@@ -1,8 +1,10 @@
 import { useState } from "react";
-import { importColumns, parseCsv, previewProductImport } from "@/lib/commercial-import";
+import { importColumns, readCsv, previewProductImport } from "@/lib/commercial-import";
 import { moneyBR, type CommercialState } from "@/lib/commercial-client";
 import type { Command } from "./CommercialForms";
 import { readDocument } from "@/lib/document-import";
+import { photoAccept } from "@/lib/photo-upload";
+import { downloadSpreadsheet } from "@/lib/spreadsheet-export";
 
 const labels: Record<string, string> = {
   name: "Nome",
@@ -19,11 +21,49 @@ export function CommercialImport({ state, command }: { state: CommercialState; c
   const [error, setError] = useState("");
   const [simulated, setSimulated] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [sheets, setSheets] = useState<{ name: string; rows: string[][] }[]>([]);
+  const [sheet, setSheet] = useState(0);
+  const [fromPhoto, setFromPhoto] = useState(false);
+  const [rawPhoto, setRawPhoto] = useState("");
+  const [sameUnit, setSameUnit] = useState(false);
   const preview = previewProductImport(
     rows.slice(1),
     mapping,
     state.products.map((product) => product.name),
+    sameUnit,
   );
+
+  function configure(parsed: string[][]) {
+    const visible = parsed.filter((line) => line.some((value) => value.trim()));
+    if (visible.length < 2 || visible.length > 201) {
+      setRows([]);
+      throw new Error("Use uma linha de cabeçalho e de 1 a 200 produtos por aba.");
+    }
+    const normalize = (value: string) =>
+      value
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .trim();
+    const headers = visible[0].map(normalize);
+    const aliases = {
+      name: /^(nome|produto|descricao|item|name)\b/,
+      category: /^(categoria|grupo|category)\b/,
+      base_unit: /^(unidade[-_ ]?base|base_unit|estoque)\b/,
+      unit_name: /^(unidade( de venda)?|unidade comercial|embalagem|unit_name)$/,
+      factor: /^(conversao|fator|factor)\b/,
+      price: /^(preco|valor( unitario)?|price)\b/,
+    };
+    setRows(visible);
+    setMapping(
+      Object.fromEntries(
+        importColumns
+          .map((key) => [key, headers.findIndex((header) => aliases[key].test(header))])
+          .filter(([, index]) => Number(index) >= 0),
+      ),
+    );
+    setSimulated(false);
+  }
 
   async function read(file?: File) {
     if (!file) return;
@@ -31,21 +71,31 @@ export function CommercialImport({ state, command }: { state: CommercialState; c
     setError("");
     setSimulated(false);
     setRows([]);
+    setSheets([]);
+    setSheet(0);
+    setFromPhoto(false);
+    setSameUnit(false);
+    setRawPhoto("");
     try {
-      if (file.size > 5 * 1024 * 1024) throw new Error("Selecione um arquivo de até 5 MB.");
+      if (file.size > 20_000_000) throw new Error("Selecione um arquivo de até 20 MB.");
       let parsed: string[][];
-      if (/\.csv$/i.test(file.name)) parsed = parseCsv(await file.text());
+      if (/\.csv$/i.test(file.name)) parsed = await readCsv(file);
       else if (/\.xlsx$/i.test(file.name)) {
-        const { readSheet } = await import("read-excel-file/browser");
-        const sheet = await readSheet(file, 1);
-        parsed = sheet.map((row) => row.map((cell) => (cell === null ? "" : String(cell))));
+        const { default: readWorkbook } = await import("read-excel-file/browser");
+        const workbook = (await readWorkbook(file)).map(({ sheet, data }) => ({
+          name: sheet,
+          rows: data.map((row) => row.map((cell) => (cell === null ? "" : String(cell)))),
+        }));
+        setSheets(workbook);
+        parsed = workbook[0]?.rows ?? [];
       } else if (/\.pdf$/i.test(file.name)) parsed = await readDocument(file, "pdf");
       else if (/\.xls$/i.test(file.name)) parsed = await readDocument(file, "xls");
-      else throw new Error("Use um arquivo PDF, XLS, XLSX ou CSV.");
-      if (parsed.length < 2 || parsed.length > 201)
-        throw new Error("O arquivo deve conter o cabeçalho e até 200 linhas de produtos.");
-      setRows(parsed);
-      setMapping({});
+      else if (/\.(jpe?g|png)$/i.test(file.name)) {
+        parsed = await readDocument(file, "image");
+        setFromPhoto(true);
+        setRawPhoto(parsed.map((row) => row.join(";")).join("\n"));
+      } else throw new Error("Use PDF, Excel, CSV, JPG ou PNG.");
+      configure(parsed);
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : "Não foi possível abrir a planilha.");
     } finally {
@@ -77,25 +127,97 @@ export function CommercialImport({ state, command }: { state: CommercialState; c
     <section className="panel">
       <h2>Importar cadastro de produtos</h2>
       <p className="hint">
-        Use os valores de cadastro da planilha. Escolha as colunas antes de confirmar. Produtos
-        entram inativos, sem saldo de estoque. Compras e inventário precisam registrar os lotes e os
-        custos correspondentes. A estrutura dos relatórios reais da empresa será mapeada quando os
-        arquivos forem fornecidos. No XLSX, será lida a primeira aba; a primeira linha deve conter
-        os títulos das colunas.
+        Selecione o arquivo, confira as colunas na prévia e simule antes de importar. Os produtos
+        entram como rascunhos, sem saldo inicial.
       </p>
-      <p className="hint">
-        PDF: use uma tabela com texto selecionável e confira a prévia. Fotos e digitalizações
-        precisam ser convertidas em planilha.
-      </p>
+      <details>
+        <summary>Formatos e exemplo de colunas</summary>
+        <p className="hint">
+          Excel, CSV, PDF com tabela de texto, JPG ou PNG. Use o cabeçalho Nome, Categoria,
+          Unidade-base, Unidade de venda, Conversão e Preço. Em fotos, revise o texto reconhecido.
+        </p>
+        <p className="hint">Exemplo: Gesso · Acabamento · kg · saco · 40 · 32,50</p>
+      </details>
+      <button
+        type="button"
+        className="action"
+        onClick={() =>
+          downloadSpreadsheet("modelo-cadastro-produtos", {
+            name: "Produtos",
+            rows: [
+              ["Nome", "Categoria", "Unidade-base", "Unidade de venda", "Conversão", "Preço"],
+              ["Gesso exemplo", "Acabamento", "kg", "saco", 40, 32.5],
+            ],
+          })
+        }
+      >
+        Baixar modelo Excel
+      </button>
       <label className="space">
-        Documento PDF, Excel ou CSV
+        Arquivo Excel, CSV, PDF, JPG ou PNG
         <input
           type="file"
-          accept=".pdf,.xls,.xlsx,.csv"
+          accept={".pdf,.xls,.xlsx,.csv," + photoAccept}
           disabled={busy}
           onChange={(event) => void read(event.target.files?.[0])}
         />
       </label>
+      {busy && (
+        <p className="hint" role="status">
+          Processando arquivo…
+        </p>
+      )}
+      {sheets.length > 1 && (
+        <label>
+          Aba da planilha{" "}
+          <select
+            value={sheet}
+            onChange={(event) => {
+              const index = Number(event.target.value);
+              setSheet(index);
+              setError("");
+              try {
+                configure(sheets[index].rows);
+              } catch (failure) {
+                setError(failure instanceof Error ? failure.message : "Aba indisponível.");
+              }
+            }}
+          >
+            {sheets.map(({ name }, index) => (
+              <option key={index} value={index}>
+                {name}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+      {fromPhoto && (
+        <details className="space" open>
+          <summary>Revisar texto reconhecido</summary>
+          <label>
+            Uma linha por produto, campos separados por ponto e vírgula
+            <textarea
+              rows={8}
+              value={rawPhoto}
+              onChange={(event) => setRawPhoto(event.target.value)}
+            />
+          </label>
+          <button
+            type="button"
+            className="action"
+            onClick={() => {
+              setError("");
+              try {
+                configure(rawPhoto.split(/\r?\n/).map((line) => line.split(";")));
+              } catch (failure) {
+                setError(failure instanceof Error ? failure.message : "Confira o texto.");
+              }
+            }}
+          >
+            Atualizar prévia
+          </button>
+        </details>
+      )}
       {error && (
         <p className="notice error" role="alert">
           {error}
@@ -103,6 +225,17 @@ export function CommercialImport({ state, command }: { state: CommercialState; c
       )}
       {!!rows.length && (
         <>
+          <label className="check space">
+            <input
+              type="checkbox"
+              checked={sameUnit}
+              onChange={(event) => {
+                setSameUnit(event.target.checked);
+                setSimulated(false);
+              }}
+            />{" "}
+            Usar a mesma unidade para venda e estoque (conversão 1)
+          </label>
           <div className="fields">
             {importColumns.map((column) => (
               <label key={column}>
@@ -152,9 +285,12 @@ export function CommercialImport({ state, command }: { state: CommercialState; c
               className="action"
               disabled={
                 busy ||
-                ["name", "base_unit", "unit_name", "factor"].some(
-                  (column) => mapping[column] === undefined || mapping[column] < 0,
-                )
+                (mapping.name ?? -1) < 0 ||
+                (sameUnit
+                  ? (mapping.base_unit ?? -1) < 0 && (mapping.unit_name ?? -1) < 0
+                  : ["base_unit", "unit_name", "factor"].some(
+                      (column) => (mapping[column] ?? -1) < 0,
+                    ))
               }
               onClick={() => setSimulated(true)}
             >

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { SERVICES } from "./services";
 import { normalizeBillingUnit } from "@/lib/estimate";
+import { commercialFetch } from "@/lib/commercial-client";
 
 export type CatalogService = {
   id: string;
@@ -23,6 +24,49 @@ export function useServiceCatalog() {
     let active = true;
     void (async () => {
       try {
+        try {
+          const records = await commercialFetch<
+            {
+              id: string;
+              key: string;
+              name: string;
+              shortName: string;
+              description: string;
+              category: string;
+              imageUrl: string | null;
+              pricePerM2: string;
+              billingUnit: string;
+            }[]
+          >("services");
+          if (!active) return;
+          if (
+            records.length ||
+            !import.meta.env.VITE_SUPABASE_URL ||
+            !import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY
+          ) {
+            setServices(
+              records.map((row) => {
+                const reference = SERVICES.find((item) => item.key === row.key);
+                return {
+                  id: row.id,
+                  key: row.key,
+                  name: row.name,
+                  short: row.shortName || row.name,
+                  description: row.description,
+                  category: row.category,
+                  image: row.imageUrl ?? reference?.image,
+                  benefits: reference?.benefits ?? [],
+                  pricePerM2: Number(row.pricePerM2) > 0 ? Number(row.pricePerM2) : null,
+                  billingUnit: normalizeBillingUnit(row.billingUnit),
+                };
+              }),
+            );
+            return;
+          }
+        } catch (failure) {
+          if (!import.meta.env.VITE_SUPABASE_URL || !import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY)
+            throw failure;
+        }
         const response = await supabase
           .from("services")
           .select("*")

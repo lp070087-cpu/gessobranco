@@ -4,6 +4,8 @@ import { ArrowDown, ArrowLeft, ArrowRight, ArrowUpRight, Menu, Plus, X } from "l
 import * as Dialog from "@radix-ui/react-dialog";
 import { Calculator } from "@/components/preciso/Calculator";
 import { PublicProducts } from "@/components/preciso/PublicProducts";
+import { BusinessMap } from "@/components/preciso/BusinessMap";
+import { useServiceCatalog } from "@/components/preciso/use-service-catalog";
 import { CompanyRequestDialog } from "@/components/preciso/CompanyRequestDialog";
 import { SERVICES } from "@/components/preciso/services";
 import "@/components/preciso/client-experience.css";
@@ -79,6 +81,12 @@ const PROCESS = [
   ],
 ];
 function Index() {
+  const { services } = useServiceCatalog();
+  const configured = new Map(services.map((service) => [service.key, service]));
+  const showcase = [
+    ...FEATURED.map((service) => configured.get(service.key) ?? service),
+    ...services.filter((service) => !FEATURED.some((base) => base.key === service.key)),
+  ];
   const [menu, setMenu] = useState(false);
   const [requestService, setRequestService] = useState(false);
   const [gallery, setGallery] = useState<number | null>(null);
@@ -246,20 +254,24 @@ function Index() {
             <p>Do teto às paredes, soluções para construir, renovar e cuidar dos acabamentos.</p>
           </div>
           <div className="editorial-services">
-            {FEATURED.map((service, i) => (
+            {showcase.map((service, i) => (
               <article key={service.key} data-reveal>
                 <a
                   className="editorial-service-photo"
                   href="#planejar"
                   aria-label={`Planejar projeto de ${service.short}`}
                 >
-                  <img
-                    src={service.image}
-                    alt={`Imagem ilustrativa de ${service.short.toLowerCase()}`}
-                    width="600"
-                    height="750"
-                    loading="lazy"
-                  />
+                  {service.image ? (
+                    <img
+                      src={service.image}
+                      alt={`Imagem ilustrativa de ${service.short.toLowerCase()}`}
+                      width="600"
+                      height="750"
+                      loading="lazy"
+                    />
+                  ) : (
+                    <span className="ouro-service-no-photo">{service.short}</span>
+                  )}
                   <span className="editorial-photo-action">
                     <ArrowUpRight size={20} aria-hidden="true" />
                   </span>
@@ -268,7 +280,7 @@ function Index() {
                   <span>0{i + 1}</span>
                   <h3>{service.short}</h3>
                 </div>
-                <p>{DETAILS[service.key]}</p>
+                <p>{configured.get(service.key)?.description || DETAILS[service.key]}</p>
               </article>
             ))}
           </div>
@@ -277,13 +289,15 @@ function Index() {
               Outras especialidades <Plus size={20} aria-hidden="true" />
             </summary>
             <div>
-              {SERVICES.filter((s) => !FEATURED.includes(s)).map((service) => (
-                <a key={service.key} href="#planejar">
-                  <strong>{service.name}</strong>
-                  <span>{DETAILS[service.key]}</span>
-                  <ArrowUpRight size={18} aria-hidden="true" />
-                </a>
-              ))}
+              {SERVICES.filter((s) => !FEATURED.includes(s) && !configured.has(s.key)).map(
+                (service) => (
+                  <a key={service.key} href="#planejar">
+                    <strong>{service.name}</strong>
+                    <span>{DETAILS[service.key]}</span>
+                    <ArrowUpRight size={18} aria-hidden="true" />
+                  </a>
+                ),
+              )}
             </div>
           </details>
           <p className="editorial-caption">Imagens ilustrativas dos tipos de acabamento.</p>
@@ -397,6 +411,9 @@ function Index() {
             </div>
           </div>
         </section>
+        <div className="editorial-container">
+          <BusinessMap />
+        </div>
       </main>
       {requestService && (
         <CompanyRequestDialog

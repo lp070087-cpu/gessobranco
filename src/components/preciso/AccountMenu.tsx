@@ -41,7 +41,8 @@ const managementLinks = [
     allow: (user: CompanyActor) => hasCompanyPermission(user, "finance_cfo"),
   },
   {
-    to: "/admin/configuracoes",
+    to: "/admin/administracao",
+    search: { secao: "configuracoes" },
     label: "Configurações",
     icon: Settings,
     allow: (user: CompanyActor) => user.role === "admin",
@@ -51,17 +52,29 @@ const managementLinks = [
 export function ManagementLinks({ user }: { user: CompanyActor }) {
   return managementLinks
     .filter(({ allow }) => allow(user))
-    .map(({ to, label, icon: Icon }) => (
-      <Link
-        key={to}
-        to={to}
-        className="account-menu-item"
-        activeOptions={{ exact: true, includeSearch: false }}
-      >
-        <Icon size={17} aria-hidden="true" />
-        {label}
-      </Link>
-    ));
+    .map((item) => {
+      const { to, label, icon: Icon } = item;
+      return (
+        <Link
+          key={label}
+          to={to}
+          search={
+            to === "/admin/administracao"
+              ? { secao: "search" in item ? item.search.secao : undefined }
+              : {}
+          }
+          className="account-menu-item"
+          activeOptions={{
+            exact: true,
+            includeSearch: to === "/admin/administracao",
+            explicitUndefined: true,
+          }}
+        >
+          <Icon size={17} aria-hidden="true" />
+          {label}
+        </Link>
+      );
+    });
 }
 
 export function AccountLayout({

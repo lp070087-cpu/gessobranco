@@ -5,6 +5,7 @@ import { CompanySession } from "@/components/preciso/CompanySession";
 import { CompanyRequests } from "@/components/preciso/CompanyRequests";
 import { SERVICES } from "@/components/preciso/services";
 import { commercialFetch, moneyBR } from "@/lib/commercial-client";
+import { photoAccept, preparePhoto } from "@/lib/photo-upload";
 import {
   hasCompanyPermission,
   type CompanyActor,
@@ -177,17 +178,263 @@ function OperationForm({
 }
 const value = (form: FormData, key: string) => String(form.get(key) ?? "").trim();
 
+function ServiceEditor({
+  edit,
+  categories,
+  close,
+  saved,
+}: {
+  edit: Service;
+  categories: string[];
+  close: () => void;
+  saved: () => void;
+}) {
+  const [photo, setPhoto] = useState("");
+  const [keepImage, setKeepImage] = useState(true);
+  const [photoError, setPhotoError] = useState("");
+  const [preparing, setPreparing] = useState(false);
+  const [unit, setUnit] = useState(edit.billingUnit);
+  async function choose(file?: File) {
+    if (!file) return;
+    setPreparing(true);
+    setPhotoError("");
+    try {
+      setPhoto(await preparePhoto(file));
+    } catch (failure) {
+      setPhotoError(failure instanceof Error ? failure.message : "Não foi possível abrir a foto.");
+    } finally {
+      setPreparing(false);
+    }
+  }
+  return (
+    <section className="panel space">
+      <h2>{edit.id ? "Editar serviço" : "Cadastrar serviço"}</h2>
+      <OperationForm
+        label="Salvar serviço"
+        submit={async (form) => {
+          if (preparing || photoError) throw new Error("Confira a imagem antes de salvar.");
+          const name = value(form, "name");
+          const slug = name
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, "-")
+            .replace(/^-|-$/g, "")
+            .slice(0, 80)
+            .replace(/-$/, "");
+          await commercialFetch(
+            edit.id ? `services/${edit.id}` : "services",
+            {
+              key: value(form, "key") || slug || crypto.randomUUID(),
+              name,
+              short_name: value(form, "short") || name.slice(0, 80),
+              category: value(form, "category"),
+              description: value(form, "description"),
+              price_per_m2:
+                unit === "quote" ? Number(edit.pricePerM2) : Number(value(form, "price")),
+              billing_unit: unit,
+              image_url: photo ? null : value(form, "image") || null,
+              ...(photo ? { image_upload: photo } : {}),
+              keep_image: keepImage && !value(form, "image"),
+              is_active: form.has("active"),
+              available: form.has("available"),
+              availability_notes: value(form, "notes"),
+              sort_order: Number(value(form, "order")),
+            },
+            undefined,
+            edit.id ? "PATCH" : "POST",
+          );
+          saved();
+        }}
+      >
+        <div className="ouro-form-group">
+          <h3>Informações do serviço</h3>
+          <div className="fields">
+            <label>
+              Nome{" "}
+              <input
+                name="name"
+                required
+                minLength={2}
+                maxLength={160}
+                defaultValue={edit.name}
+                placeholder="Ex. Forro de gesso"
+              />
+            </label>
+            <label>
+              Categoria{" "}
+              <select name="category" required defaultValue={edit.category}>
+                <option value="">Selecione uma categoria</option>
+                {categories.map((name) => (
+                  <option key={name}>{name}</option>
+                ))}
+              </select>
+            </label>
+            <label className="full">
+              Descrição no site{" "}
+              <textarea
+                name="description"
+                rows={3}
+                maxLength={10000}
+                defaultValue={edit.description}
+              />
+            </label>
+          </div>
+        </div>
+        <div className="ouro-form-group">
+          <h3>Cobrança e atendimento</h3>
+          <div className="fields">
+            <label>
+              Unidade de cobrança{" "}
+              <select value={unit} onChange={(event) => setUnit(event.target.value)}>
+                {Object.entries(units).map(([id, label]) => (
+                  <option key={id} value={id}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {unit !== "quote" && (
+              <label>
+                Preço por unidade (R$){" "}
+                <input
+                  name="price"
+                  type="number"
+                  min="0"
+                  max="100000000"
+                  step="0.01"
+                  required
+                  defaultValue={edit.pricePerM2}
+                />
+              </label>
+            )}
+            <label className="full">
+              Condições ou observações{" "}
+              <textarea name="notes" maxLength={2000} defaultValue={edit.availabilityNotes} />
+            </label>
+          </div>
+        </div>
+        <div className="ouro-form-group">
+          <h3>Foto no site</h3>
+          {(photo || (keepImage && edit.imageUrl)) && (
+            <img
+              className="ouro-upload-preview"
+              src={photo || edit.imageUrl || ""}
+              alt="Prévia da foto do serviço"
+            />
+          )}
+          <label>
+            Selecionar imagem JPG ou PNG{" "}
+            <input
+              type="file"
+              accept={photoAccept}
+              disabled={preparing}
+              onChange={(event) => void choose(event.target.files?.[0])}
+            />
+          </label>
+          {(photo || edit.imageUrl || photoError) && (
+            <button
+              type="button"
+              className="action"
+              onClick={() => {
+                setPhoto("");
+                setPhotoError("");
+                setKeepImage(false);
+              }}
+              disabled={preparing}
+            >
+              Limpar imagem
+            </button>
+          )}
+          {preparing && (
+            <p role="status" className="hint">
+              Preparando imagem…
+            </p>
+          )}
+          {photoError && (
+            <p role="alert" className="notice error">
+              {photoError}
+            </p>
+          )}
+        </div>
+        <details className="ouro-form-group">
+          <summary>Opções avançadas de exibição</summary>
+          <div className="fields">
+            <label>
+              Identificador{" "}
+              <input
+                name="key"
+                pattern="[a-z0-9-]{2,80}"
+                maxLength={80}
+                defaultValue={edit.key}
+                placeholder="Gerado a partir do nome"
+              />
+            </label>
+            <label>
+              Nome curto <input name="short" maxLength={80} defaultValue={edit.shortName} />
+            </label>
+            <label>
+              Ordem{" "}
+              <input
+                name="order"
+                type="number"
+                min="0"
+                max="2147483647"
+                step="1"
+                required
+                defaultValue={edit.sortOrder}
+              />
+            </label>
+            <label>
+              Link HTTPS da foto <input name="image" type="url" placeholder="Opcional" />
+            </label>
+          </div>
+        </details>
+        <div className="actions">
+          <label className="check">
+            <input type="checkbox" name="active" defaultChecked={edit.isActive} /> Exibir no site
+          </label>
+          <label className="check">
+            <input type="checkbox" name="available" defaultChecked={edit.available} /> Disponível
+            para orçamento
+          </label>
+          <button type="button" className="action" onClick={close}>
+            Cancelar
+          </button>
+        </div>
+      </OperationForm>
+    </section>
+  );
+}
+
 function Catalogue() {
   const { rows, error, refresh } = useRows<Service[]>("admin/services");
   const rules = useRows<{ visit_quantity: number }>("admin/service-rules");
   const [edit, setEdit] = useState<Service | null>(null);
+  const categories = useRows<string[]>("admin/service-categories");
+  const [newCategories, setNewCategories] = useState<string[]>([]);
+  const names = [
+    ...new Set([
+      ...(categories.rows ?? []),
+      ...newCategories,
+      ...SERVICES.map((service) => service.category),
+      ...(edit?.category ? [edit.category] : []),
+    ]),
+  ]
+    .filter(Boolean)
+    .sort((a, b) => a.localeCompare(b, "pt-BR"));
   return (
     <>
       <section className="panel">
         <h2>Catálogo de serviços</h2>
-        <button type="button" className="action primary" onClick={() => setEdit(blank)}>
-          Cadastrar serviço
-        </button>
+        <div className="actions">
+          <button type="button" className="action primary" onClick={() => setEdit(blank)}>
+            Cadastrar serviço
+          </button>
+          <a className="action" href="#categorias-servicos">
+            Gerenciar categorias
+          </a>
+        </div>
         {error && (
           <p className="notice error" role="alert">
             {error}
@@ -236,122 +483,57 @@ function Catalogue() {
         )}
       </section>
       {edit && (
-        <section className="panel space">
-          <h2>{edit.id ? "Editar serviço" : "Cadastrar serviço"}</h2>
-          <OperationForm
-            key={edit.id ?? edit.key}
-            label="Salvar serviço"
-            submit={async (form) => {
-              await commercialFetch(
-                edit.id ? `services/${edit.id}` : "services",
-                {
-                  key: value(form, "key"),
-                  name: value(form, "name"),
-                  short_name: value(form, "short"),
-                  category: value(form, "category"),
-                  description: value(form, "description"),
-                  price_per_m2: Number(value(form, "price")),
-                  billing_unit: value(form, "unit"),
-                  image_url: value(form, "image") || null,
-                  is_active: form.has("active"),
-                  available: form.has("available"),
-                  availability_notes: value(form, "notes"),
-                  sort_order: Number(value(form, "order")),
-                },
-                undefined,
-                edit.id ? "PATCH" : "POST",
-              );
-              setEdit(null);
-              refresh();
-            }}
-          >
-            <div className="fields">
-              <label>
-                Nome
-                <input
-                  name="name"
-                  required
-                  minLength={2}
-                  maxLength={160}
-                  defaultValue={edit.name}
-                />
-              </label>
-              <label>
-                Identificador (letras minúsculas, números e hífen)
-                <input name="key" required minLength={2} maxLength={80} defaultValue={edit.key} />
-              </label>
-              <label>
-                Nome curto
-                <input name="short" maxLength={80} defaultValue={edit.shortName} />
-              </label>
-              <label>
-                Categoria
-                <input name="category" maxLength={100} defaultValue={edit.category} />
-              </label>
-              <label>
-                Unidade de medida
-                <select name="unit" defaultValue={edit.billingUnit}>
-                  {Object.entries(units).map(([id, label]) => (
-                    <option key={id} value={id}>
-                      {label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Preço por unidade
-                <input
-                  name="price"
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  required
-                  defaultValue={edit.pricePerM2}
-                />
-              </label>
-              <label>
-                Ordem
-                <input
-                  name="order"
-                  type="number"
-                  min={0}
-                  step={1}
-                  required
-                  defaultValue={edit.sortOrder}
-                />
-              </label>
-              <label>
-                Imagem (HTTPS)
-                <input name="image" type="url" defaultValue={edit.imageUrl ?? ""} />
-              </label>
-              <label className="full">
-                Descrição
-                <textarea
-                  name="description"
-                  rows={3}
-                  maxLength={10000}
-                  defaultValue={edit.description}
-                />
-              </label>
-              <label className="full">
-                Condições, medidas ou observações
-                <textarea name="notes" maxLength={2000} defaultValue={edit.availabilityNotes} />
-              </label>
-              <label className="check">
-                <input type="checkbox" name="active" defaultChecked={edit.isActive} />
-                Ativo
-              </label>
-              <label className="check">
-                <input type="checkbox" name="available" defaultChecked={edit.available} />
-                Disponível
-              </label>
-            </div>
-          </OperationForm>
-          <button type="button" className="action space" onClick={() => setEdit(null)}>
-            Fechar edição
-          </button>
-        </section>
+        <ServiceEditor
+          key={edit.id ?? edit.key}
+          edit={edit}
+          categories={names}
+          close={() => setEdit(null)}
+          saved={() => {
+            setEdit(null);
+            refresh();
+            categories.refresh();
+          }}
+        />
       )}
+      <section id="categorias-servicos" className="panel space">
+        <h2>Categorias de serviço</h2>
+        <p className="hint">
+          Cadastre a categoria uma vez e selecione-a ao cadastrar ou editar um serviço.
+        </p>
+        {categories.error && (
+          <p className="notice error" role="alert">
+            {categories.error}
+          </p>
+        )}
+        <OperationForm
+          label="Cadastrar categoria"
+          submit={async (form) => {
+            const item = await commercialFetch<{ name: string }>("admin/service-categories", {
+              name: value(form, "name"),
+            });
+            setNewCategories((current) => [...current, item.name]);
+            categories.refresh();
+          }}
+        >
+          <label>
+            Nome da categoria{" "}
+            <input
+              name="name"
+              required
+              minLength={2}
+              maxLength={100}
+              placeholder="Ex. Acabamento"
+            />
+          </label>
+        </OperationForm>
+        {names.length > 0 && (
+          <ul className="ouro-chips" aria-label="Categorias cadastradas">
+            {names.map((name) => (
+              <li key={name}>{name}</li>
+            ))}
+          </ul>
+        )}
+      </section>
       <section className="panel space">
         <h2>Regras do orçamento</h2>
         <p className="hint">

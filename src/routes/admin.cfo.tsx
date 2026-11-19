@@ -11,10 +11,14 @@ import {
   reviewTypes,
   suggestClassification,
 } from "@/lib/cfo";
-import { parseCsv } from "@/lib/commercial-import";
+import { readCsv } from "@/lib/commercial-import";
 import { readDocument } from "@/lib/document-import";
+import { downloadSpreadsheet } from "@/lib/spreadsheet-export";
+import { OwnerExpenses } from "@/components/preciso/OwnerExpenses";
 
 export const Route = createFileRoute("/admin/cfo")({
+  validateSearch: (search: Record<string, unknown>): { secao?: "despesas" } =>
+    search.secao === "despesas" ? { secao: "despesas" } : {},
   head: () => ({ meta: [{ title: "CFO Financeiro — Ouro Branco" }] }),
   component: () => (
     <CompanySession
@@ -72,10 +76,19 @@ const stamp = (stamp: string) =>
   new Date(stamp).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
 const statuses = { running: "Em processamento", succeeded: "Concluído", failed: "Falhou" };
 
-const cfoSections = ["Visão geral", "Importar extrato", "Histórico"] as const;
+const cfoSections = [
+  "Visão geral",
+  "Importar extrato",
+  "Comparar",
+  "Histórico",
+  "Despesas",
+] as const;
 
 function Cfo({ user }: { user: CompanyActor }) {
-  const [section, setSection] = useState<(typeof cfoSections)[number]>("Visão geral");
+  const requested = Route.useSearch().secao;
+  const [section, setSection] = useState<(typeof cfoSections)[number]>(
+    requested === "despesas" && user.role === "admin" ? "Despesas" : "Visão geral",
+  );
   const [range, setRange] = useState(() => {
     const end = localDay();
     return { start: end.slice(0, 7) + "-01", end };
@@ -88,13 +101,21 @@ function Cfo({ user }: { user: CompanyActor }) {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
-  const [instruction, setInstruction] = useState("/CFO");
+  const [jumpToReport, setJumpToReport] = useState(false);
+  const reportAnchor = useRef<HTMLDivElement>(null);
   const request = useRef<{ period: string; key: string } | null>(null);
   const running = useRef(false);
   const refresh = () => setRevision((value) => value + 1);
   const { start, end } = range;
   useEffect(() => {
-    if (section !== "Visão geral" || !start || !end || start > end) return;
+    if (section !== "Visão geral" || !jumpToReport || !reportAnchor.current) return;
+    reportAnchor.current.scrollIntoView({ block: "start" });
+    reportAnchor.current.focus({ preventScroll: true });
+    setJumpToReport(false);
+  }, [section, jumpToReport]);
+  useEffect(() => {
+    if ((section !== "Visão geral" && section !== "Comparar") || !start || !end || start > end)
+      return;
     const controller = new AbortController();
     const query = new URLSearchParams({ start, end });
     setLiveError("");
@@ -118,14 +139,9 @@ function Cfo({ user }: { user: CompanyActor }) {
       });
     return () => controller.abort();
   }, [revision]);
-  async function execute(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (running.current) return;
-    if (instruction.trim().toUpperCase() !== "/CFO") {
-      setError("Digite /CFO para executar.");
-      return;
-    }
-    const period = range.start + "|" + range.end;
+  async function execute(periodRange: typeof range) {
+    if (running.current) throw new Error("Uma análise já está em andamento.");
+    const period = periodRange.start + "|" + periodRange.end;
     if (request.current?.period !== period) request.current = { period, key: crypto.randomUUID() };
     running.current = true;
     setError("");
@@ -134,17 +150,18 @@ function Cfo({ user }: { user: CompanyActor }) {
     try {
       const result = await commercialFetch<{ id: string; status: string; report?: Snapshot }>(
         "cfo/run",
-        { ...range, request_key: request.current.key },
+        { ...periodRange, request_key: request.current.key },
       );
       if (result.status === "running") {
         setMessage("A execução está em andamento. Confira o histórico.");
+        return false;
       }
       if (result.status === "succeeded" && result.report) {
         setSelected({
           id: result.id,
           source: "manual",
-          start_on: range.start,
-          end_on: range.end,
+          start_on: periodRange.start,
+          end_on: periodRange.end,
           status: "succeeded",
           started_at: new Date().toISOString(),
           error: null,
@@ -152,24 +169,30 @@ function Cfo({ user }: { user: CompanyActor }) {
         });
         request.current = null;
         setMessage("Análise concluída.");
+        setRange(periodRange);
+        return true;
       }
     } catch (failure) {
-      setError(
+      const problem =
         failure instanceof Error
-          ? failure.message
-          : "O processamento falhou. Consulte o histórico.",
-      );
+          ? failure
+          : new Error("O processamento falhou. Consulte o histórico.");
+      setError(problem.message);
+      if ((problem as Error & { status?: number }).status === 500) request.current = null;
+      throw problem;
     } finally {
       running.current = false;
       setBusy(false);
       refresh();
     }
+    return false;
   }
   async function openRun(id: string) {
     setError("");
     try {
       setSelected(await commercialFetch<Run>("cfo/history/" + id));
       setSection("Visão geral");
+      setJumpToReport(true);
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : "Relatório indisponível.");
     }
@@ -182,16 +205,18 @@ function Cfo({ user }: { user: CompanyActor }) {
       label="Menu do CFO"
       menu={
         <>
-          {cfoSections.map((item) => (
-            <button
-              key={item}
-              type="button"
-              aria-current={section === item ? "page" : undefined}
-              onClick={() => setSection(item)}
-            >
-              {item}
-            </button>
-          ))}
+          {cfoSections
+            .filter((item) => item !== "Despesas" || user.role === "admin")
+            .map((item) => (
+              <button
+                key={item}
+                type="button"
+                aria-current={section === item ? "page" : undefined}
+                onClick={() => setSection(item)}
+              >
+                {item}
+              </button>
+            ))}
           <ManagementLinks user={user} />
         </>
       }
@@ -214,7 +239,13 @@ function Cfo({ user }: { user: CompanyActor }) {
               O fechamento automático analisa o mês anterior no dia 5, na faixa das 9h no horário de
               Brasília.
             </p>
-            <form className="space" onSubmit={(event) => void execute(event)}>
+            <form
+              className="space"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void execute(range).catch(() => {});
+              }}
+            >
               <fieldset disabled={busy}>
                 <div className="fields">
                   <label>
@@ -244,11 +275,7 @@ function Cfo({ user }: { user: CompanyActor }) {
                 </div>
                 <label>
                   Comando
-                  <input
-                    value={instruction}
-                    onChange={(e) => setInstruction(e.target.value)}
-                    required
-                  />
+                  <input value="/CFO" readOnly />
                 </label>
                 <button className="action primary">
                   {busy ? "Processando…" : "Executar /CFO"}
@@ -280,17 +307,41 @@ function Cfo({ user }: { user: CompanyActor }) {
             </button>
           )}
           {(report || snapshot) && (
-            <CfoResults
-              key={selected?.id ?? start + end}
-              start={selected?.start_on ?? start}
-              end={selected?.end_on ?? end}
-              snapshot={(report ?? snapshot)!}
-              onReviewed={refresh}
-            />
+            <div ref={reportAnchor} tabIndex={-1} className="ouro-report-anchor">
+              <CfoResults
+                key={selected?.id ?? start + end}
+                start={selected?.start_on ?? start}
+                end={selected?.end_on ?? end}
+                snapshot={(report ?? snapshot)!}
+                onReviewed={refresh}
+              />
+            </div>
           )}
+          <CfoCalculator />
+          <CfoGuide />
         </>
       )}
-      {section === "Importar extrato" && <StatementImport finished={refresh} />}
+      {section === "Importar extrato" && (
+        <StatementImport
+          busyAnalysis={busy}
+          manualRange={range}
+          analyze={execute}
+          view={() => {
+            setSection("Visão geral");
+            setJumpToReport(true);
+          }}
+          finished={refresh}
+        />
+      )}
+      {section === "Comparar" && (
+        <CfoComparison
+          range={range}
+          snapshot={snapshot}
+          onRange={setRange}
+          currentError={liveError}
+        />
+      )}
+      {section === "Despesas" && user.role === "admin" && <OwnerExpenses saved={refresh} />}
       {section === "Histórico" && (
         <>
           <button type="button" className="action" onClick={refresh}>
@@ -320,9 +371,12 @@ function Cfo({ user }: { user: CompanyActor }) {
               <h2>Arquivos importados</h2>
               {history?.imports.length === 0 && <p className="hint">Nenhum arquivo importado.</p>}
               {history?.imports.map((file) => (
-                <p className="space" key={file.id}>
-                  {file.file_name} · {file.account} · {stamp(file.created_at)}
-                </p>
+                <div className="actions space" key={file.id}>
+                  <span>
+                    {file.file_name} · {file.account} · {stamp(file.created_at)}
+                  </span>
+                  <DownloadStatement id={file.id} />
+                </div>
               ))}
             </section>
           </div>
@@ -335,12 +389,323 @@ function Cfo({ user }: { user: CompanyActor }) {
 const columnLabels = {
   date: "Data",
   value: "Valor com sinal",
+  credit: "Créditos (separados)",
+  debit: "Débitos (separados)",
   description: "Descrição",
   reference: "ID do banco (opcional)",
 };
-const initial = { date: -1, value: -1, description: -1, reference: -1 };
+const comparisonMetrics = (snapshot: Snapshot) =>
+  [
+    ["Receita comercial", snapshot.dre.revenue],
+    ["Recebimentos de serviços", snapshot.dre.receivedServices],
+    ["Entradas em caixa", snapshot.cash.received],
+    ["Saídas de caixa", snapshot.cash.paid],
+    ["Variação de caixa", snapshot.cash.net],
+    ["Resultado comercial estimado", snapshot.dre.result],
+  ] as const;
+
+function CfoComparison({
+  range,
+  snapshot,
+  onRange,
+  currentError,
+}: {
+  range: { start: string; end: string };
+  snapshot: Snapshot | null;
+  onRange: (value: { start: string; end: string }) => void;
+  currentError: string;
+}) {
+  const [previous, setPrevious] = useState<{ key: string; snapshot: Snapshot } | null>(null);
+  const [error, setError] = useState("");
+  const duration = Date.parse(range.end) - Date.parse(range.start);
+  const valid = duration >= 0 && duration <= 366 * 86400000;
+  const start = valid
+    ? new Date(Date.parse(range.start) - duration - 86400000).toISOString().slice(0, 10)
+    : "";
+  const end = valid ? new Date(Date.parse(range.start) - 86400000).toISOString().slice(0, 10) : "";
+  const key = start + end;
+  useEffect(() => {
+    if (!start || !end) return;
+    const controller = new AbortController();
+    setError("");
+    void commercialFetch<Snapshot>(
+      `cfo/overview?start=${start}&end=${end}`,
+      undefined,
+      controller.signal,
+    )
+      .then((value) => {
+        if (!controller.signal.aborted) setPrevious({ key, snapshot: value });
+      })
+      .catch((failure: Error) => {
+        if (!controller.signal.aborted) setError(failure.message);
+      });
+    return () => controller.abort();
+  }, [start, end, key]);
+  const earlier = previous?.key === key ? previous.snapshot : null;
+  return (
+    <section className="panel">
+      <h2>Comparar períodos</h2>
+      <div className="fields">
+        <label>
+          De{" "}
+          <input
+            type="date"
+            value={range.start}
+            onChange={(event) => onRange({ ...range, start: event.target.value })}
+          />
+        </label>
+        <label>
+          Até{" "}
+          <input
+            type="date"
+            value={range.end}
+            onChange={(event) => onRange({ ...range, end: event.target.value })}
+          />
+        </label>
+      </div>
+      {valid ? (
+        <p className="hint">
+          Comparação com o período imediatamente anterior, com o mesmo número de dias ({start} a{" "}
+          {end}).
+        </p>
+      ) : (
+        <p className="hint">Escolha um intervalo de até um ano.</p>
+      )}
+      {(error || currentError) && (
+        <p className="notice error" role="alert">
+          {error || currentError}
+        </p>
+      )}
+      {valid && !error && !currentError && !(snapshot && earlier) && (
+        <p role="status">Carregando comparação…</p>
+      )}
+      {snapshot && earlier && (
+        <div className="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Indicador</th>
+                <th>Atual</th>
+                <th>Anterior</th>
+                <th>Variação</th>
+              </tr>
+            </thead>
+            <tbody>
+              {comparisonMetrics(snapshot).map(([label, amount], index) => {
+                const baseline = comparisonMetrics(earlier)[index][1];
+                return (
+                  <tr key={label}>
+                    <th scope="row">{label}</th>
+                    <td>{moneyBR(amount)}</td>
+                    <td>{moneyBR(baseline)}</td>
+                    <td>
+                      {amount == null || baseline == null
+                        ? "Em apuração"
+                        : moneyBR(amount - baseline)}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function AnimatedMoney({ value }: { value: number | null }) {
+  const [display, setDisplay] = useState(value);
+  useEffect(() => {
+    if (
+      value == null ||
+      value === 0 ||
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    ) {
+      setDisplay(value);
+      return;
+    }
+    const start = performance.now();
+    let frame: number;
+    const tick = (time: number) => {
+      const progress = Math.min((time - start) / 480, 1);
+      setDisplay(value * (1 - (1 - progress) ** 3));
+      if (progress < 1) frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [value]);
+  return (
+    <>
+      <span className="sr-only">{moneyBR(value)}</span>
+      <span aria-hidden="true">{moneyBR(display)}</span>
+    </>
+  );
+}
+
+function CfoCalculator() {
+  const inputs = [
+    ["revenue", "Receita"],
+    ["cost", "Custo direto"],
+    ["fees", "Frete e taxas"],
+    ["expenses", "Despesas operacionais"],
+  ] as const;
+  const [amounts, setAmounts] = useState({ revenue: 0, cost: 0, fees: 0, expenses: 0 });
+  const contribution = amounts.revenue - amounts.cost - amounts.fees;
+  return (
+    <section className="panel space">
+      <h2>Calculadora de resultado</h2>
+      <p className="hint">
+        Simule um cenário e veja os valores calculados enquanto preenche. Os lançamentos do sistema
+        são consultados no relatório acima.
+      </p>
+      <div className="fields">
+        {inputs.map(([key, label]) => (
+          <label key={key}>
+            {label} (R$)
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              placeholder="0,00"
+              onChange={(event) =>
+                setAmounts({ ...amounts, [key]: Math.max(0, event.target.valueAsNumber || 0) })
+              }
+            />
+          </label>
+        ))}
+      </div>
+      <div className="cfo-simulation">
+        <div>
+          <small>Contribuição</small>
+          <strong>{moneyBR(contribution)}</strong>
+        </div>
+        <div>
+          <small>Resultado estimado</small>
+          <strong>{moneyBR(contribution - amounts.expenses)}</strong>
+        </div>
+        <div>
+          <small>Margem de contribuição</small>
+          <strong>
+            {amounts.revenue > 0
+              ? ((100 * contribution) / amounts.revenue).toLocaleString("pt-BR", {
+                  maximumFractionDigits: 2,
+                }) + "%"
+              : "—"}
+          </strong>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function CfoGuide() {
+  return (
+    <details className="panel space">
+      <summary>Como o CFO calcula e o que revisar</summary>
+      <ul className="ouro-guide">
+        <li>
+          <strong>Resultado comercial</strong> usa as vendas do período, os custos associados e as
+          despesas. Custos ausentes aparecem como pendência. A visão gerencial usa os vencimentos
+          das despesas como referência.
+        </li>
+        <li>
+          <strong>Fluxo de caixa</strong> usa pagamentos e recebimentos efetivos. Recebimentos de
+          serviços aparecem separadamente e entram nas entradas de caixa.
+        </li>
+        <li>
+          <strong>Conciliação bancária</strong> cruza data e valor quando há um par único. Confirme
+          itens ambíguos e identifique transferências internas antes de fechar.
+        </li>
+        <li>
+          <strong>Fechamento</strong> revise custos pendentes e débitos sem par, compare períodos
+          equivalentes e exporte a planilha para conferência contábil.
+        </li>
+      </ul>
+      <a
+        className="action"
+        href="https://meuatendimento.sebrae.com.br/sites/PortalSebrae/artigos/como-fazer-a-gestao-financeira-do-pequeno-negocio,d999a442d2e5a410VgnVCM1000003b74010aRCRD"
+        target="_blank"
+        rel="noreferrer"
+      >
+        Referência de gestão financeira · Sebrae
+      </a>
+    </details>
+  );
+}
+
+function DownloadStatement({ id }: { id: string }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  async function download() {
+    setBusy(true);
+    setError("");
+    try {
+      type Entry = {
+        day: string;
+        description: string;
+        cents: number;
+        classification: string | null;
+      };
+      const entries: Entry[] = [];
+      let next: string | null = null;
+      do {
+        const page: { rows: Entry[]; next: string | null } = await commercialFetch(
+          `cfo/imports/${id}${next ? "?after=" + next : ""}`,
+        );
+        entries.push(...page.rows);
+        next = page.next;
+      } while (next);
+      entries.sort((a, b) => a.day.localeCompare(b.day));
+      downloadSpreadsheet("extrato-ouro-branco", {
+        name: "Lançamentos",
+        rows: [
+          ["Data", "Descrição", "Valor", "Classificação"],
+          ...entries.map((item) => [
+            item.day,
+            item.description,
+            Number(item.cents) / 100,
+            item.classification
+              ? (reviewTypes[item.classification as keyof typeof reviewTypes] ??
+                item.classification)
+              : "",
+          ]),
+        ],
+      });
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : "Não foi possível exportar.");
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div>
+      <button type="button" className="action" disabled={busy} onClick={() => void download()}>
+        {busy ? "Exportando…" : "Baixar extrato Excel"}
+      </button>
+      {error && (
+        <p role="alert" className="hint">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+const initial = { date: -1, value: -1, credit: -1, debit: -1, description: -1, reference: -1 };
 type Columns = typeof initial;
-function StatementImport({ finished }: { finished: () => void }) {
+function StatementImport({
+  finished,
+  analyze,
+  view,
+  busyAnalysis,
+  manualRange,
+}: {
+  finished: () => void;
+  analyze: (range: { start: string; end: string }) => Promise<boolean>;
+  view: () => void;
+  busyAnalysis: boolean;
+  manualRange: { start: string; end: string };
+}) {
   const [file, setFile] = useState(""),
     [rows, setRows] = useState<string[][]>([]),
     [map, setMap] = useState<Columns>(initial);
@@ -348,7 +713,14 @@ function StatementImport({ finished }: { finished: () => void }) {
     [error, setError] = useState(""),
     [message, setMessage] = useState(""),
     [busy, setBusy] = useState(false);
-  const ready = rows.length > 1 && map.date >= 0 && map.value >= 0 && map.description >= 0;
+  const [savedRange, setSavedRange] = useState<typeof manualRange | null>(null);
+  const [complete, setComplete] = useState(false);
+  const [analyzing, setAnalyzing] = useState(false);
+  const ready =
+    rows.length > 1 &&
+    map.date >= 0 &&
+    (map.value >= 0 || map.credit >= 0 || map.debit >= 0) &&
+    map.description >= 0;
   const parsed = ready ? parseStatement(rows, map) : { entries: [], errors: [] };
   async function read(source?: File) {
     if (!source) return;
@@ -356,12 +728,15 @@ function StatementImport({ finished }: { finished: () => void }) {
     setFile("");
     setError("");
     setMessage("");
+    setSavedRange(null);
+    setComplete(false);
     setBusy(true);
     try {
-      if (source.size > 5_000_000) throw new Error("Selecione um arquivo de até 5 MB.");
+      if (source.size > 40_000_000)
+        throw new Error("O arquivo ultrapassa 40 MB. Exporte um período menor.");
       const format = source.name.split(".").pop()?.toLowerCase();
       let table: string[][];
-      if (format === "csv") table = parseCsv((await source.text()).replace(/^\uFEFF/, ""));
+      if (format === "csv") table = await readCsv(source);
       else if (format === "xlsx") {
         const { readSheet } = await import("read-excel-file/browser");
         table = (await readSheet(source, 1)).map((row) =>
@@ -369,15 +744,31 @@ function StatementImport({ finished }: { finished: () => void }) {
             cell instanceof Date ? cell.toISOString().slice(0, 10) : String(cell ?? ""),
           ),
         );
-      } else if (format === "xls" || format === "pdf") table = await readDocument(source, format);
+      } else if (format === "xls" || format === "pdf")
+        table = await readDocument(source, format, { maxRows: 8001, maxPages: 120 });
       else throw new Error("Selecione CSV, XLS, XLSX ou PDF com texto selecionável.");
       table = table.filter((row) => row.some((cell) => cell.trim()));
-      if (table.length < 2 || table.length > 2001)
-        throw new Error("Use cabeçalho e de 1 a 2.000 linhas por arquivo.");
+      if (table.length < 2 || table.length > 8001)
+        throw new Error("Use cabeçalho e até 8.000 lançamentos por arquivo.");
+      const knownHeader = table.slice(0, 25).findIndex((row) => {
+        const cells = row.map(normalizeStatementText);
+        return (
+          cells.some((cell) => /^(data|date)\b/.test(cell)) &&
+          cells.some((cell) => /^(valor|amount|credito|debito|entrada|saida)\b/.test(cell)) &&
+          cells.some((cell) => /^descri|^histor|^lancamento/.test(cell))
+        );
+      });
+      if (knownHeader > 0) table = table.slice(knownHeader);
       const header = table[0].map(normalizeStatementText);
+      table = table.filter(
+        (row, index) =>
+          index === 0 || row.map(normalizeStatementText).join("\u0000") !== header.join("\u0000"),
+      );
       setMap({
         date: header.findIndex((cell) => /^data|^date/.test(cell)),
         value: header.findIndex((cell) => /^valor|^amount/.test(cell)),
+        credit: header.findIndex((cell) => /^credito|^entrada/.test(cell)),
+        debit: header.findIndex((cell) => /^debito|^saida/.test(cell)),
         description: header.findIndex((cell) => /^descri|^histor|^lancamento/.test(cell)),
         reference: header.findIndex((cell) => /^(id|referencia|documento)$/.test(cell)),
       });
@@ -389,6 +780,22 @@ function StatementImport({ finished }: { finished: () => void }) {
       setBusy(false);
     }
   }
+  async function runAnalysis(range: typeof manualRange) {
+    setAnalyzing(true);
+    setError("");
+    try {
+      setComplete(await analyze(range));
+    } catch (failure) {
+      setError(
+        failure instanceof Error
+          ? failure.message
+          : "Não foi possível analisar. O extrato foi salvo.",
+      );
+    } finally {
+      setAnalyzing(false);
+    }
+  }
+
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (busy || !ready || parsed.errors.length || !parsed.entries.length) return;
@@ -396,17 +803,29 @@ function StatementImport({ finished }: { finished: () => void }) {
     setError("");
     setMessage("");
     try {
-      const saved = await commercialFetch<{ inserted: number; duplicates: number }>("cfo/import", {
+      const payload = {
         file,
         account,
         entries: parsed.entries,
         authorized: new FormData(event.currentTarget).has("authorization"),
-      });
+      };
+      if (new Blob([JSON.stringify(payload)]).size > 4_000_000)
+        throw new Error("A prévia contém muito texto. Divida a planilha em períodos menores.");
+      const saved = await commercialFetch<{ inserted: number; duplicates: number }>(
+        "cfo/import",
+        payload,
+      );
       setMessage(
         `${saved.inserted} lançamento(s) importado(s) · ${saved.duplicates} repetido(s) ignorado(s).`,
       );
       setRows([]);
       finished();
+      const days = parsed.entries.map((item) => item.day).sort();
+      const period = { start: days[0], end: days[days.length - 1] };
+      const range =
+        Date.parse(period.end) - Date.parse(period.start) > 366 * 86400000 ? manualRange : period;
+      setSavedRange(range);
+      await runAnalysis(range);
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : "Importação indisponível.");
     } finally {
@@ -417,8 +836,8 @@ function StatementImport({ finished }: { finished: () => void }) {
     <section className="panel">
       <h2>Importar extratos e planilhas</h2>
       <p className="hint">
-        Use uma conta de referência consistente. Valores positivos são créditos e negativos são
-        débitos. PDF deve conter tabela com texto selecionável.
+        Use o mesmo apelido em arquivos da mesma conta. Valores positivos são créditos e negativos
+        são débitos. Aceita CSV, Excel e PDF com texto selecionável, até 40 MB e 8.000 lançamentos.
       </p>
       <form className="space" onSubmit={(event) => void save(event)}>
         <fieldset disabled={busy}>
@@ -430,6 +849,7 @@ function StatementImport({ finished }: { finished: () => void }) {
               required
               minLength={2}
               maxLength={100}
+              placeholder="Ex. Banco principal – Loja"
             />
           </label>
           <label>
@@ -483,15 +903,44 @@ function StatementImport({ finished }: { finished: () => void }) {
               </label>
               <button
                 className="action primary"
-                disabled={!ready || !!parsed.errors.length || !parsed.entries.length}
+                disabled={
+                  !ready || !!parsed.errors.length || !parsed.entries.length || busyAnalysis
+                }
               >
-                Confirmar importação
+                Salvar e analisar
               </button>
+              {ready && !parsed.errors.length && !!parsed.entries.length && (
+                <button
+                  type="button"
+                  className="action"
+                  onClick={() =>
+                    downloadSpreadsheet("previa-extrato", {
+                      name: "Extrato",
+                      rows: [
+                        ["Data", "Descrição", "Valor", "Referência"],
+                        ...parsed.entries.map((item) => [
+                          item.day,
+                          item.description,
+                          item.cents / 100,
+                          item.reference ?? "",
+                        ]),
+                      ],
+                    })
+                  }
+                >
+                  Baixar prévia em Excel
+                </button>
+              )}
             </>
           )}
         </fieldset>
       </form>
-      {busy && <p role="status">Processando arquivo…</p>}
+      {busy && !analyzing && <p role="status">Processando arquivo…</p>}
+      {analyzing && (
+        <p className="notice" role="status">
+          Extrato salvo. Analisando lançamentos…
+        </p>
+      )}
       {error && (
         <p className="notice error" role="alert">
           {error}
@@ -501,6 +950,16 @@ function StatementImport({ finished }: { finished: () => void }) {
         <p className="notice" role="status">
           {message}
         </p>
+      )}
+      {complete && (
+        <button type="button" className="action primary space" onClick={view}>
+          Ver resultado
+        </button>
+      )}
+      {!complete && !analyzing && savedRange && (
+        <button type="button" className="action space" onClick={() => void runAnalysis(savedRange)}>
+          Analisar extrato salvo
+        </button>
       )}
     </section>
   );
@@ -554,19 +1013,53 @@ function CfoResults({
         recebidos entram em caixa.
       </p>
       <div className="stats space">
-        {[
-          ["Receita comercial", snapshot.dre.revenue],
-          ["Recebimentos de serviços", snapshot.dre.receivedServices],
-          ["Saldo de caixa no período", snapshot.cash.net],
-          ["Resultado comercial estimado", snapshot.dre.result],
-        ].map(([label, amount]) => (
+        {(
+          [
+            ["Receita comercial", snapshot.dre.revenue],
+            ["Recebimentos de serviços", snapshot.dre.receivedServices],
+            ["Saldo de caixa no período", snapshot.cash.net],
+            ["Resultado comercial estimado", snapshot.dre.result],
+          ] as const
+        ).map(([label, amount]) => (
           <div className="panel" key={label}>
             <small>{label}</small>
-            <strong>{moneyBR(amount)}</strong>
+            <strong>
+              <AnimatedMoney value={amount} />
+            </strong>
           </div>
         ))}
       </div>
       <div className="actions">
+        <button
+          type="button"
+          className="action primary"
+          onClick={() =>
+            downloadSpreadsheet(
+              `ouro-branco-cfo-${start}`,
+              {
+                name: "Relatório",
+                rows: [
+                  ["De", "Até", "Seção", "Indicador", "Valor (R$)"],
+                  ...rows.map(([section, label, value]) => [start, end, section, label, value]),
+                ],
+              },
+              {
+                name: "Revisão bancária",
+                rows: [
+                  ["Data", "Descrição", "Conta", "Valor (R$)"],
+                  ...snapshot.bank.queue.map((item) => [
+                    item.booked_on,
+                    item.description,
+                    item.account,
+                    item.amount_cents / 100,
+                  ]),
+                ],
+              },
+            )
+          }
+        >
+          Baixar relatório Excel
+        </button>
         <button className="action" onClick={exportCsv}>
           Baixar relatório CSV
         </button>

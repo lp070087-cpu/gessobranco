@@ -218,11 +218,15 @@ export function ProductEditor({
   return (
     <form className="panel space" onSubmit={submit}>
       <h2>{product ? "Editar produto" : "Cadastrar produto"}</h2>
+      <p className="hint">
+        Comece pelo nome e pela unidade do estoque. Depois informe como vende o produto. Registre o
+        saldo e o custo em Compras ou Estoque.
+      </p>
       <Fields fields={fields} />
       <h3>Unidades de venda</h3>
       <p className="hint">
-        Informe quanto cada unidade representa na base. Para saco e meio saco, confirme o peso com a
-        empresa. Conversões com histórico são preservadas.
+        Exemplo: se o estoque usa kg e o saco pesa 40 kg, cadastre a unidade de venda “saco” com
+        quantidade 40. Para vender por kg, use quantidade 1.
       </p>
       {units.map((unit, index) => (
         <div className="line" key={index}>

@@ -35,7 +35,7 @@ const input = z
           .strict(),
       )
       .min(1)
-      .max(2000),
+      .max(8000),
   })
   .strict();
 const review = z
@@ -271,6 +271,18 @@ export async function cfoRequest(
   read: () => Promise<unknown>,
   search = new URLSearchParams(),
 ) {
+  if (method === "GET" && /^cfo\/imports\/[0-9a-f-]{36}$/.test(path)) {
+    const id = z.string().uuid().parse(path.split("/")[2]);
+    const after = z.string().uuid().nullable().parse(search.get("after"));
+    const result = await database().execute(sql`SELECT id,booked_on::text AS day,description,
+      amount_cents AS cents,classification FROM preciso.cfo_entries
+      WHERE import_id=${id}::uuid AND (${after}::uuid IS NULL OR id>${after}::uuid)
+      ORDER BY id LIMIT 751`);
+    return json({
+      rows: result.rows.slice(0, 750),
+      next: result.rows.length > 750 ? result.rows[749].id : null,
+    });
+  }
   if (path === "cfo/overview" && method === "GET") {
     const { start, end } = dates.refine(validPeriod).parse({
       start: search.get("start"),

@@ -37,7 +37,14 @@ export const normalizeStatementText = (value: string) =>
 
 export function parseStatement(
   rows: string[][],
-  mapping: { date: number; value: number; description: number; reference: number },
+  mapping: {
+    date: number;
+    value: number;
+    description: number;
+    reference: number;
+    credit?: number;
+    debit?: number;
+  },
 ) {
   const entries: StatementEntry[] = [];
   const errors: number[] = [];
@@ -47,15 +54,14 @@ export function parseStatement(
     const brazil = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(rawDate);
     const day = brazil ? `${brazil[3]}-${brazil[2]}-${brazil[1]}` : rawDate;
     const date = /^\d{4}-\d{2}-\d{2}$/.test(day) ? new Date(day + "T00:00:00Z") : new Date(NaN);
-    const raw = (row[mapping.value] ?? "").replace(/R\$|\s/gi, "").replace("−", "-");
-    const negative = /^-|\)$|D$/i.test(raw);
-    const clean = raw.replace(/^[-+(]|[DC)]$/gi, "");
-    const number = /^(?:\d{1,3}(?:\.\d{3})+|\d+),\d{1,2}$/.test(clean)
-      ? Number(clean.replaceAll(".", "").replace(",", "."))
-      : /^\d+(?:\.\d{1,2})?$/.test(clean)
-        ? Number(clean)
-        : NaN;
-    const cents = Math.round(number * 100) * (negative ? -1 : 1);
+    const credit = parseAmount(row[mapping.credit ?? -1]);
+    const debit = parseAmount(row[mapping.debit ?? -1]);
+    const cents =
+      mapping.value >= 0
+        ? parseAmount(row[mapping.value])
+        : credit && debit
+          ? NaN
+          : Math.abs(credit) - Math.abs(debit);
     const description = (row[mapping.description]?.trim() ?? "").slice(0, 180);
     const reference = row[mapping.reference]?.trim().slice(0, 100) || undefined;
     if (
@@ -72,6 +78,19 @@ export function parseStatement(
     entries.push({ day, description, cents, reference });
   }
   return { entries, errors };
+}
+
+function parseAmount(value = "") {
+  const raw = value.replace(/R\$|\s/gi, "").replace(/[−–]/g, "-");
+  if (!raw) return 0;
+  const negative = /^-|\)$|D$|-$/.test(raw.toUpperCase());
+  const clean = raw.replace(/^[-+(]|[DC)-]$/gi, "");
+  const number = /^(?:\d{1,3}(?:\.\d{3})+|\d+),\d{1,2}$/.test(clean)
+    ? Number(clean.replaceAll(".", "").replace(",", "."))
+    : /^\d+(?:\.\d{1,2})?$/.test(clean)
+      ? Number(clean)
+      : NaN;
+  return Math.round(number * 100) * (negative ? -1 : 1);
 }
 
 export function suggestClassification(description: string, cents: number) {

@@ -1,4 +1,6 @@
-export type QualityThresholds = { good: number; medium: number };
+export const defaultQualityColors = { good: "#15803d", medium: "#946800", bad: "#b42328" };
+export type QualityColors = typeof defaultQualityColors;
+export type QualityThresholds = { good: number; medium: number; colors?: QualityColors };
 export type QualityPeriod = "day" | "month" | "year";
 export type QualityPoint = {
   day: string;

@@ -1,14 +1,24 @@
 import { sql } from "drizzle-orm";
 import { z } from "zod";
-import type { QualityPeriod, QualityPoint, SalesQuality } from "@/lib/sales-quality";
+import {
+  defaultQualityColors,
+  type QualityPeriod,
+  type QualityPoint,
+  type SalesQuality,
+} from "@/lib/sales-quality";
 import { database } from "./db";
 
 const key = "commercial_quality_thresholds";
-const defaults = { good: 15, medium: 5 };
+const defaults = { good: 15, medium: 5, colors: defaultQualityColors };
+const color = z.string().regex(/^#[0-9a-f]{6}$/i);
 const thresholdsSchema = z
   .object({
     good: z.number().finite().min(0).max(100),
     medium: z.number().finite().min(0).max(100),
+    colors: z
+      .object({ good: color, medium: color, bad: color })
+      .strict()
+      .default(defaultQualityColors),
   })
   .strict()
   .refine(({ good, medium }) => good > medium, "O limite de Bom deve ser maior que o de Médio.");

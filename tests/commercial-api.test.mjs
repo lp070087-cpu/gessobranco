@@ -178,6 +178,63 @@ test("real HTTP handlers enforce sessions, admin roles, input validation and ori
     );
     assert.deepEqual((await (await saveProposal(service.id)).json()).proposal, proposal);
     assert.equal((await request("admin/business-settings", token)).status, 200);
+    assert.equal((await request("admin/owner-expenses")).status, 401);
+    const profile = {
+      business_name: "Ouro Teste",
+      legal_name: "Ouro Teste LTDA",
+      cnpj: "12.345.678/0001-90",
+      contact_email: "",
+      contact_phone: "",
+      service_area: "",
+      estimate_disclaimer: "",
+      address: "Rua Teste, 10",
+      city: "Recife",
+      state: "PE",
+      latitude: "-8.054",
+      longitude: "-34.881",
+    };
+    const profileSave = await request(
+      "admin/business-settings",
+      token,
+      profile,
+      undefined,
+      "PATCH",
+    );
+    assert.equal(profileSave.status, 200);
+    const publicLocation = await (await request("business/location")).json();
+    assert.deepEqual(publicLocation, {
+      address: "Rua Teste, 10, Recife – PE",
+      latitude: "-8.054",
+      longitude: "-34.881",
+    });
+    const categorySave = await request("admin/service-categories", token, { name: "Pintura" });
+    assert.equal(categorySave.status, 201);
+    assert.ok(
+      (await (await request("admin/service-categories", token)).json()).includes("Pintura"),
+    );
+    const samplePhoto =
+      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jGy8AAAAASUVORK5CYII=";
+    const expense = {
+      request_id: randomUUID(),
+      description: "Pix, gasolina",
+      amount: 79.21,
+      day: "2098-11-18",
+      category: "Combustível",
+      paid: false,
+      photo: samplePhoto,
+    };
+    const expenseResponse = await request("admin/owner-expenses", token, expense);
+    assert.equal(expenseResponse.status, 201);
+    const savedExpense = await expenseResponse.json();
+    assert.equal((await request("admin/owner-expenses", token, expense)).status, 200);
+    assert.equal(
+      (await request("admin/owner-expenses", token, { ...expense, request_id: randomUUID() }))
+        .status,
+      409,
+    );
+    const receipt = await request(`admin/owner-expenses/${savedExpense.id}/receipt`, token);
+    assert.equal(receipt.headers.get("content-type"), "image/png");
+    assert.equal((await request(`admin/owner-expenses/${savedExpense.id}/receipt`)).status, 401);
     const cfoOverview = await request("cfo/overview?start=2026-11-18&end=2026-11-18", token);
     assert.equal(cfoOverview.status, 200);
     assert.equal((await cfoOverview.json()).dre.receivedServices, 0);
@@ -217,7 +274,9 @@ test("real HTTP handlers enforce sessions, admin roles, input validation and ori
     assert.equal(cells[0][0], "Ouro Branco — Relatório comercial");
     const qualityRange = range.replace("commercial/report", "commercial/quality");
     const emptyChart = await (await request(qualityRange, token)).json();
-    assert.deepEqual(emptyChart.thresholds, { good: 15, medium: 5 });
+    assert.equal(emptyChart.thresholds.good, 15);
+    assert.equal(emptyChart.thresholds.medium, 5);
+    assert.match(emptyChart.thresholds.colors.good, /^#[a-f0-9]{6}$/);
     assert.equal(emptyChart.sales, 0);
     assert.deepEqual(emptyChart.points[0], {
       day: "2026-11-17",
@@ -369,9 +428,15 @@ test("real HTTP handlers enforce sessions, admin roles, input validation and ori
         price_per_m2: 30,
         billing_unit: "m2",
         is_active: true,
+        category: "Pintura",
+        image_upload: samplePhoto,
       })
     ).json();
     assert.ok(createdService.id);
+    assert.match(createdService.imageUrl, /^\/api\/neon\/services\/[a-f0-9-]+\/image\?v=/);
+    const image = await request(createdService.imageUrl.slice("/api/neon/".length));
+    assert.equal(image.status, 200);
+    assert.equal(image.headers.get("content-type"), "image/png");
     const quotePayload = {
       title: "Orçamento da sala",
       project_type: "residencial",
@@ -470,7 +535,11 @@ test("real HTTP handlers enforce sessions, admin roles, input validation and ori
     };
     const importResult = await request("cfo/import", token, cfoPayload);
     assert.equal(importResult.status, 201);
-    assert.equal((await importResult.json()).inserted, 4);
+    const imported = await importResult.json();
+    assert.equal(imported.inserted, 4);
+    const exportRows = await (await request(`cfo/imports/${imported.id}`, token)).json();
+    assert.equal(exportRows.rows.length, 4);
+    assert.equal(exportRows.next, null);
     assert.equal((await (await request("cfo/import", token, cfoPayload)).json()).duplicates, 4);
     const rangeCfo = { start: "2026-10-01", end: "2026-10-31", request_key: randomUUID() };
     const runResponse = await request("cfo/run", token, rangeCfo);

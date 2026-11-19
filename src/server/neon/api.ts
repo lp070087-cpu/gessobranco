@@ -3,12 +3,16 @@ import { and, eq, gt, sql } from "drizzle-orm";
 import { z } from "zod";
 import { database } from "./db";
 import { hashPassword, verifyPassword } from "./passwords";
-import { projects, quotes, services, sessions, users } from "./schema";
+import { projects, quotes, sessions, users } from "./schema";
 import { commercialRequest, publicCatalogue } from "./commercial";
 import { companyRequests, createCompanyRequest } from "./company-requests";
 import { cfoRequest, scheduledCfo } from "./cfo";
 import { portal } from "./portal";
-import { businessSettingsSchema, defaultBusinessSettings } from "@/lib/business-settings";
+import {
+  businessAddress,
+  businessSettingsSchema,
+  defaultBusinessSettings,
+} from "@/lib/business-settings";
 import {
   companyPermissions,
   hasCompanyPermission,
@@ -68,10 +72,47 @@ const serviceInput = z
       .refine((v) => v.startsWith("https://"))
       .nullable()
       .default(null),
+    image_upload: z
+      .string()
+      .max(1_650_000)
+      .regex(/^data:image\/(?:jpeg|png);base64,[A-Za-z0-9+/]+={0,2}$/)
+      .optional(),
+    keep_image: z.boolean().default(false),
     availability_notes: z.string().max(2000).default(""),
     sort_order: z.number().int().min(0).default(0),
   })
   .strict();
+
+const imageUrl = sql`CASE WHEN image_url LIKE 'data:image/%' THEN
+  '/api/neon/services/'||id||'/image?v='||md5(image_url) ELSE image_url END`;
+const serviceColumns = sql`id,key,name,short_name AS "shortName",category,
+  sort_order AS "sortOrder",availability_notes AS "availabilityNotes",description,
+  price_per_m2 AS "pricePerM2",billing_unit AS "billingUnit",${imageUrl} AS "imageUrl",
+  is_active AS "isActive",available,updated_at AS "updatedAt"`;
+
+async function businessProfile(db: ReturnType<typeof database>) {
+  const result = await db.execute(
+    sql`SELECT value FROM preciso.platform_settings WHERE key='business_profile'`,
+  );
+  return {
+    ...defaultBusinessSettings,
+    ...(result.rows[0]?.value as Partial<typeof defaultBusinessSettings> | undefined),
+  };
+}
+
+function decodeServiceImage(data: string) {
+  const [header, encoded] = data.split(",");
+  const bytes = Buffer.from(encoded, "base64");
+  const png = header === "data:image/png;base64";
+  const signature = png ? "89504e470d0a1a0a" : "ffd8ff";
+  if (
+    bytes.length > 1_200_000 ||
+    !bytes.subarray(0, 8).toString("hex").startsWith(signature) ||
+    bytes.toString("base64") !== encoded
+  )
+    return null;
+  return { bytes, type: png ? "image/png" : "image/jpeg" };
+}
 
 function cookie(value: string, maxAge: number) {
   return `${COOKIE}=${value}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${maxAge}${process.env.NODE_ENV === "production" ? "; Secure" : ""}`;
@@ -322,29 +363,147 @@ export async function handleNeonRequest(request: Request, now = new Date()): Pro
       await db.delete(sessions).where(eq(sessions.tokenHash, sha256(token(request))));
       return json({ ok: true }, 200, { "Set-Cookie": cookie("", 0) });
     }
+    if (path === "business/location" && request.method === "GET") {
+      const settings = await businessProfile(db);
+      return json({
+        address: businessAddress(settings),
+        latitude: settings.latitude,
+        longitude: settings.longitude,
+      });
+    }
     if (path === "services" && request.method === "GET") {
-      return json(
-        await db
-          .select()
-          .from(services)
-          .where(eq(services.isActive, true))
-          .orderBy(services.sortOrder),
+      const result = await db.execute(
+        sql`SELECT ${serviceColumns} FROM preciso.services WHERE is_active ORDER BY sort_order`,
       );
+      return json(result.rows);
+    }
+    if (/^services\/[0-9a-f-]{36}\/image$/.test(path) && request.method === "GET") {
+      const id = z.string().uuid().parse(path.split("/")[1]);
+      const result = await db.execute(
+        sql`SELECT image_url,is_active FROM preciso.services WHERE id=${id}::uuid`,
+      );
+      const image = result.rows[0];
+      if (
+        !image ||
+        typeof image.image_url !== "string" ||
+        !image.image_url.startsWith("data:image/")
+      )
+        return new Response(null, { status: 404 });
+      if (!image.is_active) {
+        const viewer = await actor(request);
+        if (!viewer || !hasCompanyPermission(viewer, "service_catalogue"))
+          return new Response(null, { status: 404 });
+      }
+      const asset = decodeServiceImage(image.image_url);
+      if (!asset) return new Response(null, { status: 404 });
+      return new Response(new Uint8Array(asset.bytes), {
+        headers: {
+          "Content-Type": asset.type,
+          "X-Content-Type-Options": "nosniff",
+          "Cache-Control": image.is_active ? "public, max-age=120" : "private, no-store",
+        },
+      });
     }
     const user = await actor(request);
     if (!user) return json({ error: "Autenticação necessária." }, 401);
     if (path === "auth/me" && request.method === "GET") return json({ user });
+    if (
+      path === "admin/owner-expenses" ||
+      /^admin\/owner-expenses\/[0-9a-f-]{36}\/receipt$/.test(path)
+    ) {
+      if (user.role !== "admin") return json({ error: "Acesso restrito." }, 403);
+      if (path.endsWith("/receipt") && request.method === "GET") {
+        const id = z.string().uuid().parse(path.split("/")[2]);
+        const result = await db.execute(
+          sql`SELECT value->>'photo' AS photo FROM preciso.platform_settings WHERE key=${"owner_expense:" + id}`,
+        );
+        const photo = result.rows[0]?.photo;
+        const asset = typeof photo === "string" ? decodeServiceImage(photo) : null;
+        return asset
+          ? new Response(new Uint8Array(asset.bytes), {
+              headers: {
+                "Content-Type": asset.type,
+                "Cache-Control": "private, no-store",
+                "X-Content-Type-Options": "nosniff",
+              },
+            })
+          : new Response(null, { status: 404 });
+      }
+      if (path === "admin/owner-expenses" && request.method === "GET") {
+        const result =
+          await db.execute(sql`SELECT e.id,e.description,e.amount,e.due_on::text,e.paid_on::text,
+          s.value->>'category' AS category, (s.value->>'photo' IS NOT NULL) AS receipt
+          FROM preciso.commercial_expenses e JOIN preciso.platform_settings s ON s.key='owner_expense:'||e.id::text
+          ORDER BY e.due_on DESC,e.id DESC LIMIT 100`);
+        return json(result.rows);
+      }
+      if (path === "admin/owner-expenses" && request.method === "POST") {
+        const input = z
+          .object({
+            request_id: z.string().uuid(),
+            description: z.string().trim().min(3).max(180),
+            amount: z.number().finite().positive().max(100000000).multipleOf(0.01),
+            day: z.string().date(),
+            category: z.enum(["Combustível", "Materiais", "Frete", "Serviços", "Outras despesas"]),
+            paid: z.boolean(),
+            photo: z
+              .string()
+              .max(1_650_000)
+              .regex(/^data:image\/(?:jpeg|png);base64,[A-Za-z0-9+/]+={0,2}$/)
+              .optional(),
+          })
+          .strict()
+          .parse(await body(request, 1_700_000));
+        if (input.photo && !decodeServiceImage(input.photo))
+          return json({ error: "Selecione um comprovante JPG ou PNG válido." }, 400);
+        const key = "owner_expense_claim:" + (input.photo ? sha256(input.photo) : input.request_id);
+        const payload = {
+          request_key: input.request_id,
+          description: input.description,
+          amount: input.amount,
+          due_on: input.day,
+          paid_on: input.paid ? input.day : null,
+          method: input.paid ? "pix" : null,
+          confirmed: input.paid,
+        };
+        try {
+          const result = await db.execute(sql`WITH claimed AS (
+            INSERT INTO preciso.platform_settings(key,value,updated_by)
+            VALUES (${key},jsonb_build_object('request_id',${input.request_id}::text),${user.id}::uuid)
+            ON CONFLICT(key) DO NOTHING RETURNING key
+          ), created AS MATERIALIZED (
+            SELECT preciso.commercial_command(${user.id}::uuid,'expense',${JSON.stringify(payload)}::jsonb)->>'id' AS id FROM claimed
+          ), attached AS (
+            INSERT INTO preciso.platform_settings(key,value,updated_by)
+            SELECT 'owner_expense:'||id,${JSON.stringify({ category: input.category, photo: input.photo ?? null, request_id: input.request_id })}::jsonb,${user.id}::uuid
+            FROM created RETURNING key
+          ) SELECT id FROM created`);
+          if (result.rows[0]) return json(result.rows[0], 201);
+          const previous = await db.execute(sql`SELECT 1 FROM preciso.platform_settings
+            WHERE key=${key} AND value->>'request_id'=${input.request_id} AND updated_by=${user.id}::uuid`);
+          return previous.rows.length
+            ? json({ ok: true })
+            : json({ error: "Este comprovante já consta nas despesas do proprietário." }, 409);
+        } catch (failure) {
+          if (
+            failure instanceof Error &&
+            (failure.message.includes("CASH_CLOSED") ||
+              String(failure.cause).includes("CASH_CLOSED"))
+          )
+            return json(
+              {
+                error:
+                  "Abra o caixa da loja para registrar o Pix como pago, ou salve a despesa em aberto.",
+              },
+              409,
+            );
+          throw failure;
+        }
+      }
+    }
     if (path === "admin/business-settings") {
       if (user.role !== "admin") return json({ error: "Acesso restrito." }, 403);
-      if (request.method === "GET") {
-        const result = await db.execute(
-          sql`SELECT value FROM preciso.platform_settings WHERE key='business_profile'`,
-        );
-        return json({
-          ...defaultBusinessSettings,
-          ...(result.rows[0]?.value as object | undefined),
-        });
-      }
+      if (request.method === "GET") return json(await businessProfile(db));
       if (request.method === "PATCH") {
         const settings = businessSettingsSchema.parse(await body(request));
         await db.execute(sql`WITH changed AS (
@@ -366,7 +525,7 @@ export async function handleNeonRequest(request: Request, now = new Date()): Pro
         path,
         request.method,
         user.id,
-        () => body(request, path === "cfo/import" ? 780000 : 65536),
+        () => body(request, path === "cfo/import" ? 4_050_000 : 65536),
         new URL(request.url).searchParams,
       );
     }
@@ -486,7 +645,36 @@ export async function handleNeonRequest(request: Request, now = new Date()): Pro
     if (path === "admin/services" && request.method === "GET") {
       if (!hasCompanyPermission(user, "service_catalogue"))
         return json({ error: "Acesso restrito." }, 403);
-      return json(await db.select().from(services).orderBy(services.sortOrder));
+      const result = await db.execute(
+        sql`SELECT ${serviceColumns} FROM preciso.services ORDER BY sort_order`,
+      );
+      return json(result.rows);
+    }
+    if (path === "admin/service-categories") {
+      if (!hasCompanyPermission(user, "service_catalogue"))
+        return json({ error: "Acesso restrito." }, 403);
+      if (request.method === "GET") {
+        const result =
+          await db.execute(sql`SELECT value->>'name' AS name FROM preciso.platform_settings
+          WHERE key LIKE 'service_category:%' UNION SELECT category FROM preciso.services WHERE category<>'' ORDER BY name`);
+        return json(result.rows.map(({ name }) => name));
+      }
+      if (request.method === "POST") {
+        const { name } = z
+          .object({ name: z.string().trim().min(2).max(100) })
+          .strict()
+          .parse(await body(request));
+        const normalized = name
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .toLowerCase()
+          .replace(/\s+/g, " ");
+        const result =
+          await db.execute(sql`INSERT INTO preciso.platform_settings(key,value,updated_by)
+          VALUES (${"service_category:" + sha256(normalized)},jsonb_build_object('name',${name}::text),${user.id}::uuid)
+          ON CONFLICT (key) DO UPDATE SET key=EXCLUDED.key RETURNING value->>'name' AS name`);
+        return json(result.rows[0], 201);
+      }
     }
     if (path === "admin/service-rules") {
       if (!hasCompanyPermission(user, "service_catalogue"))
@@ -517,19 +705,24 @@ export async function handleNeonRequest(request: Request, now = new Date()): Pro
     ) {
       if (!hasCompanyPermission(user, "service_catalogue"))
         return json({ error: "Acesso restrito." }, 403);
-      const value = toService(serviceInput.parse(await body(request)));
+      const input = serviceInput.parse(await body(request, 1_700_000));
+      if (input.image_upload && !decodeServiceImage(input.image_upload))
+        return json({ error: "Selecione uma imagem JPG ou PNG válida." }, 400);
+      const value = toService(input);
+      const storedImage = input.image_upload ?? value.imageUrl;
       const mutation =
         request.method === "POST" && path === "services"
           ? sql`INSERT INTO preciso.services(key,name,short_name,description,category,price_per_m2,billing_unit,
             is_active,available,image_url,availability_notes,sort_order,updated_at)
           VALUES(${value.key},${value.name},${value.shortName},${value.description},${value.category},
-            ${value.pricePerM2},${value.billingUnit},${value.isActive},${value.available},${value.imageUrl},
+            ${value.pricePerM2},${value.billingUnit},${value.isActive},${value.available},${storedImage},
             ${value.availabilityNotes},${value.sortOrder},${value.updatedAt.toISOString()}) RETURNING *`
           : request.method === "PATCH" && path.startsWith("services/")
             ? sql`UPDATE preciso.services SET key=${value.key},name=${value.name},short_name=${value.shortName},
               description=${value.description},category=${value.category},price_per_m2=${value.pricePerM2},
               billing_unit=${value.billingUnit},is_active=${value.isActive},available=${value.available},
-              image_url=${value.imageUrl},availability_notes=${value.availabilityNotes},sort_order=${value.sortOrder},
+              image_url=CASE WHEN ${input.keep_image && !storedImage} THEN image_url ELSE ${storedImage} END,
+              availability_notes=${value.availabilityNotes},sort_order=${value.sortOrder},
               updated_at=${value.updatedAt.toISOString()}
             WHERE id=${z.string().uuid().parse(path.split("/")[1])} RETURNING *`
             : null;
@@ -538,11 +731,7 @@ export async function handleNeonRequest(request: Request, now = new Date()): Pro
       const result = await db.execute(sql`WITH saved AS (${mutation}), logged AS (
         INSERT INTO preciso.audit_logs(actor_id,action,target_id)
         SELECT ${user.id},'service.saved',id FROM saved
-      ) SELECT id,key,name,short_name AS "shortName",category,
-          sort_order AS "sortOrder",availability_notes AS "availabilityNotes",description,
-          price_per_m2 AS "pricePerM2",billing_unit AS "billingUnit",image_url AS "imageUrl",
-          is_active AS "isActive",available,updated_at AS "updatedAt"
-        FROM saved`);
+      ) SELECT ${serviceColumns} FROM saved`);
       const saved = result.rows[0];
       return saved
         ? json({ ...saved, updatedAt: new Date(String(saved.updatedAt)).toISOString() })
