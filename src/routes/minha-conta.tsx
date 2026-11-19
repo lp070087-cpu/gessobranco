@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { CalendarDays, ClipboardList, Package, Settings } from "lucide-react";
+import { Building2, CalendarDays, ClipboardList, Package, Settings } from "lucide-react";
 import { AccountLayout, hasManagementAccess } from "@/components/preciso/AccountMenu";
+import { CustomerBusiness, type BusinessData } from "@/components/preciso/CustomerBusiness";
 import { CompanySession } from "@/components/preciso/CompanySession";
 import { commercialFetch, moneyBR, quantityBR } from "@/lib/commercial-client";
 import type { CompanyActor } from "@/lib/company-permissions";
@@ -10,11 +11,12 @@ import { measuredArea } from "@/lib/estimate";
 export const Route = createFileRoute("/minha-conta")({
   validateSearch: (
     search: Record<string, unknown>,
-  ): { secao?: "agenda" | "orcamento" | "materiais" | "configuracoes" } =>
+  ): { secao?: "agenda" | "orcamento" | "materiais" | "configuracoes" | "empresa" } =>
     search.secao === "agenda" ||
     search.secao === "orcamento" ||
     search.secao === "materiais" ||
-    search.secao === "configuracoes"
+    search.secao === "configuracoes" ||
+    search.secao === "empresa"
       ? { secao: search.secao }
       : {},
   head: () => ({ meta: [{ title: "Minha conta — Ouro Branco" }] }),
@@ -93,6 +95,7 @@ const options = [
   { label: "Orçamentos e pedidos", section: undefined, icon: ClipboardList },
   { label: "Materiais", section: "materiais", icon: Package },
   { label: "Agendamentos", section: "agenda", icon: CalendarDays },
+  { label: "Empresa e obras", section: "empresa", icon: Building2 },
   { label: "Minha conta", section: "configuracoes", icon: Settings },
 ] as const;
 const field = (data: FormData, key: string) => String(data.get(key) ?? "").trim();
@@ -100,6 +103,7 @@ const field = (data: FormData, key: string) => String(data.get(key) ?? "").trim(
 function Account({ user }: { user: CompanyActor }) {
   const { secao } = Route.useSearch();
   const navigate = useNavigate({ from: "/minha-conta" });
+  const business = usePortal<BusinessData>(hasManagementAccess(user) ? null : "portal/business");
   const showHistory = () => void navigate({ search: {} });
   if (hasManagementAccess(user))
     return (
@@ -119,7 +123,7 @@ function Account({ user }: { user: CompanyActor }) {
     <AccountLayout
       key={secao ?? "historico"}
       label="Menu da conta"
-      menu={options.map(({ label, section, icon: Icon }) => (
+      menu={options.filter(({ section }) => section !== "empresa" || business.data?.eligible).map(({ label, section, icon: Icon }) => (
         <Link
           key={label}
           to="/minha-conta"
@@ -138,6 +142,20 @@ function Account({ user }: { user: CompanyActor }) {
       {secao === "orcamento" && <QuotesForm done={showHistory} />}
       {!secao && <History />}
       {secao === "agenda" && <Appointments />}
+      {secao === "empresa" && (
+        business.data?.eligible ? (
+          <CustomerBusiness data={business.data} reload={business.reload} />
+        ) : (
+          <section className="panel">
+            <h2>Empresa e obras</h2>
+            {business.data ? (
+              <p className="hint">Esta área está disponível para contas cadastradas com CNPJ.</p>
+            ) : (
+              <PortalStatus error={business.error} loaded={false} />
+            )}
+          </section>
+        )
+      )}
       {secao === "configuracoes" && (
         <section className="panel account-profile">
           <h2>Dados da conta</h2>
@@ -153,11 +171,12 @@ function Account({ user }: { user: CompanyActor }) {
   );
 }
 
-function usePortal<T>(path: string) {
+function usePortal<T>(path: string | null) {
   const [data, setData] = useState<T | null>(null),
     [error, setError] = useState(""),
     [revision, refresh] = useState(0);
   useEffect(() => {
+    if (!path) return;
     const abort = new AbortController();
     void commercialFetch<T>(path, undefined, abort.signal)
       .then((value) => {

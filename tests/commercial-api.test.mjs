@@ -26,6 +26,7 @@ test("real HTTP handlers enforce sessions, admin roles, input validation and ori
       "0005_service_proposals",
       "0006_purchase_deliveries",
       "0007_customer_documents",
+      "0008_customer_worksites",
     ])
       await db.exec(
         await readFile(new URL(`../drizzle/${migration}.sql`, import.meta.url), "utf8"),
@@ -420,6 +421,39 @@ test("real HTTP handlers enforce sessions, admin roles, input validation and ori
     const buyer = await request("auth/login", null, { ...buyerLogin, access: "client" });
     assert.equal(buyer.status, 200);
     const buyerToken = buyer.headers.get("set-cookie").match(/preciso_session=([a-f0-9]+)/)[1];
+    const company = { name: "Construtora de teste", trade_name: "Construção" };
+    const site = {
+      name: "Forro da sala",
+      property_type: "apartment",
+      unit: "302, bloco B",
+      address: "Rua de teste, 20, Recife PE",
+      area_m2: 76.25,
+      notes: "Forro de gesso",
+    };
+    const patch = (path, session, payload) => request(path, session, payload, "http://ouro.test", "PATCH");
+    assert.equal((await request("portal/worksites", buyerToken, site)).status, 409);
+    assert.equal((await patch("portal/business", staffToken, company)).status, 403);
+    assert.equal((await patch("portal/business", buyerToken, company)).status, 200);
+    assert.equal((await request("portal/worksites", buyerToken, { ...site, unit: "" })).status, 400);
+    const savedSite = await request("portal/worksites", buyerToken, site);
+    assert.equal(savedSite.status, 201);
+    const { id: worksiteId } = await savedSite.json();
+    const otherBuyer = { ...bulk, email: "other-cnpj@example.invalid", document: "11.222.333/0001-81" };
+    assert.equal((await request("auth/register", null, otherBuyer)).status, 201);
+    const otherLogin = await request("auth/login", null, {
+      email: otherBuyer.email, password: otherBuyer.password, access: "client",
+    });
+    assert.equal(otherLogin.status, 200);
+    const otherToken = otherLogin.headers.get("set-cookie").match(/preciso_session=([a-f0-9]+)/)[1];
+    assert.equal((await patch("portal/business", otherToken, company)).status, 200);
+    assert.equal((await patch(`portal/worksites/${worksiteId}`, otherToken, site)).status, 404);
+    assert.equal((await patch(`portal/worksites/${worksiteId}`, buyerToken, { ...site, area_m2: 80 })).status, 200);
+    const buyerBusiness = await (await request("portal/business", buyerToken)).json();
+    assert.equal(buyerBusiness.document, "12345678000195");
+    assert.deepEqual(buyerBusiness.company, company);
+    assert.equal(Number(buyerBusiness.worksites[0].area_m2), 80);
+    assert.deepEqual((await (await request("portal/business", otherToken)).json()).worksites, []);
+
     assert.equal(
       (
         await request("auth/login", null, {

@@ -5,7 +5,7 @@ import { commercialFetch, moneyBR, quantityBR } from "@/lib/commercial-client";
 import { hasManagementAccess } from "./AccountMenu";
 import type { CompanyActor } from "@/lib/company-permissions";
 import { CompanyRequestDialog, type RequestContext } from "./CompanyRequestDialog";
-import gessoImage from "@/assets/service-gesso.jpg";
+import { PanelSkeleton } from "./LoadingSkeleton";
 import "./commercial.css";
 
 type PublicProduct = {
@@ -72,7 +72,12 @@ export function PublicProducts() {
         </p>
       )}
       <div className="editorial-services">
-        {(products.length ? products : status === "loading" ? [] : [sample]).map((product) => (
+        {(status === "loading"
+          ? []
+          : [...products, ...references.filter((reference) =>
+              !products.some((product) => family(product.name) === family(reference.name)),
+            )]
+        ).map((product) => (
           <ProductCard
             key={product.id}
             product={product}
@@ -86,19 +91,35 @@ export function PublicProducts() {
   );
 }
 
-const sample: PublicProduct = {
-  id: "reference",
-  name: "Gesso em pó",
-  description: "Consulte o fornecimento de gesso por quilo ou em saco.",
-  category: "Gesso",
+const materials = [
+  { name: "Gesso em pó", match: /\bgesso\b/, description: "Gesso a granel ou em saco para serviços de acabamento." },
+  { name: "Placa de gesso", match: /\bplacas?\b/, description: "Placas para montagem de forros e acabamentos." },
+  { name: "Bloco de gesso", match: /\bblocos?\b/, description: "Blocos para divisórias e vedações internas." },
+  { name: "Alicate", match: /\balicates?\b/, description: "Ferramenta para corte e manuseio na instalação." },
+  { name: "Arame", match: /\barames?\b/, description: "Consulte os tipos de arame para sua instalação." },
+  { name: "Trena", match: /\btrenas?\b/, description: "Trena para medir os ambientes e planejar os cortes." },
+];
+
+function family(name: string) {
+  const normalized = name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const specific = materials.findIndex(({ match }, index) => index > 0 && match.test(normalized));
+  return specific >= 0 ? specific : materials[0].match.test(normalized) ? 0 : -1;
+}
+
+const references: PublicProduct[] = materials.map(({ name, description }, index) => ({
+  id: `reference-${index}`,
+  name,
+  description,
+  category: "",
   base_unit: "kg",
-  image_url: "https://upload.wikimedia.org/wikipedia/commons/6/69/Plaster1.jpg",
+  image_url: null,
   available: false,
-  units: [
+  units: index === 0 ? [
     { name: "1 quilo", factor: "1", price: "2" },
     { name: "Saco", factor: "", price: "25" },
-  ],
-};
+    { name: "Meio saco (20 kg)", factor: "20", price: "15" },
+  ] : [],
+}));
 
 function ProductCard({
   product,
@@ -112,7 +133,8 @@ function ProductCard({
   const [unitName, setUnitName] = useState(product.units[0]?.name ?? "");
   const [quantity, setQuantity] = useState("1");
   const unit = product.units.find((entry) => entry.name === unitName);
-  const reference = product.id === "reference";
+  const reference = product.id.startsWith("reference-");
+  const imageIndex = family(product.name);
   const unitId = customer ? unit?.id : undefined;
   const [pricing, setPricing] = useState<{
     unit: string;
@@ -148,25 +170,23 @@ function ProductCard({
   const tier = quote?.next_tier;
   return (
     <article data-reveal>
-      {product.image_url && (
+      {product.image_url ? (
         <div className="editorial-service-photo">
-          <img
-            src={product.image_url}
-            alt={product.name}
-            width="600"
-            height="750"
-            loading="lazy"
-            onError={
-              reference
-                ? (event) => {
-                    if (!event.currentTarget.src.endsWith(gessoImage))
-                      event.currentTarget.src = gessoImage;
-                  }
-                : undefined
-            }
-          />
+          <img src={product.image_url} alt={product.name} width="600" height="750" loading="lazy" />
         </div>
-      )}
+      ) : imageIndex >= 0 ? (
+        <div
+          role="img"
+          aria-label={`Ilustração de ${materials[imageIndex].name.toLowerCase()}`}
+          style={{
+            aspectRatio: "1",
+            borderRadius: "8px",
+            backgroundImage: "url('/materiais-ouro-branco.png')",
+            backgroundSize: "300% 200%",
+            backgroundPosition: `${(imageIndex % 3) * 50}% ${imageIndex < 3 ? 0 : 100}%`,
+          }}
+        />
+      ) : null}
       <div className="editorial-service-title">
         <h3>{product.name}</h3>
       </div>
@@ -174,19 +194,12 @@ function ProductCard({
       <p className="editorial-caption">
         {product.available ? "Disponível para consulta" : "Consulte a disponibilidade"}
       </p>
-      {reference && (
-        <>
-          <p className="editorial-caption">
-            Valores ilustrativos. Confirme o preço, o peso do saco e o frete com a equipe.
-          </p>
-          <p className="editorial-caption">
-            <a href="https://commons.wikimedia.org/wiki/File:Plaster1.jpg">
-              Foto ilustrativa: Lionel Allorge
-            </a>{" "}
-            · <a href="https://creativecommons.org/licenses/by-sa/3.0/">CC BY-SA 3.0</a>
-          </p>
-        </>
+      {reference && imageIndex === 0 && (
+        <p className="editorial-caption">
+          Preços de referência. Confirme o valor, o peso da embalagem e o frete com a equipe.
+        </p>
       )}
+      {reference && imageIndex !== 0 && <p className="editorial-caption">Preço sob consulta</p>}
       <form
         className="commercial request-fields"
         onSubmit={(event) => {
@@ -259,4 +272,3 @@ function ProductCard({
     </article>
   );
 }
-import { PanelSkeleton } from "@/components/preciso/LoadingSkeleton";
