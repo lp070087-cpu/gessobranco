@@ -74,9 +74,13 @@ export function PublicProducts() {
       <div className="editorial-services">
         {(status === "loading"
           ? []
-          : [...products, ...references.filter((reference) =>
-              !products.some((product) => family(product.name) === family(reference.name)),
-            )]
+          : [
+              ...products,
+              ...references.filter(
+                (reference) =>
+                  !products.some((product) => family(product.name) === family(reference.name)),
+              ),
+            ]
         ).map((product) => (
           <ProductCard
             key={product.id}
@@ -92,16 +96,43 @@ export function PublicProducts() {
 }
 
 const materials = [
-  { name: "Gesso em pó", match: /\bgesso\b/, description: "Gesso a granel ou em saco para serviços de acabamento." },
-  { name: "Placa de gesso", match: /\bplacas?\b/, description: "Placas para montagem de forros e acabamentos." },
-  { name: "Bloco de gesso", match: /\bblocos?\b/, description: "Blocos para divisórias e vedações internas." },
-  { name: "Alicate", match: /\balicates?\b/, description: "Ferramenta para corte e manuseio na instalação." },
-  { name: "Arame", match: /\barames?\b/, description: "Consulte os tipos de arame para sua instalação." },
-  { name: "Trena", match: /\btrenas?\b/, description: "Trena para medir os ambientes e planejar os cortes." },
+  {
+    name: "Gesso em pó",
+    match: /\bgesso\b/,
+    description: "Gesso a granel ou em saco para serviços de acabamento.",
+  },
+  {
+    name: "Placa de gesso",
+    match: /\bplacas?\b/,
+    description: "Placas para montagem de forros e acabamentos.",
+  },
+  {
+    name: "Bloco de gesso",
+    match: /\bblocos?\b/,
+    description: "Blocos para divisórias e vedações internas.",
+  },
+  {
+    name: "Alicate",
+    match: /\balicates?\b/,
+    description: "Ferramenta para corte e manuseio na instalação.",
+  },
+  {
+    name: "Arame",
+    match: /\barames?\b/,
+    description: "Consulte os tipos de arame para sua instalação.",
+  },
+  {
+    name: "Trena",
+    match: /\btrenas?\b/,
+    description: "Trena para medir os ambientes e planejar os cortes.",
+  },
 ];
 
 function family(name: string) {
-  const normalized = name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const normalized = name
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
   const specific = materials.findIndex(({ match }, index) => index > 0 && match.test(normalized));
   return specific >= 0 ? specific : materials[0].match.test(normalized) ? 0 : -1;
 }
@@ -114,11 +145,14 @@ const references: PublicProduct[] = materials.map(({ name, description }, index)
   base_unit: "kg",
   image_url: null,
   available: false,
-  units: index === 0 ? [
-    { name: "1 quilo", factor: "1", price: "2" },
-    { name: "Saco", factor: "", price: "25" },
-    { name: "Meio saco (20 kg)", factor: "20", price: "15" },
-  ] : [],
+  units:
+    index === 0
+      ? [
+          { name: "1 quilo", factor: "1", price: "2" },
+          { name: "Saco", factor: "", price: "25" },
+          { name: "Meio saco (20 kg)", factor: "20", price: "15" },
+        ]
+      : [],
 }));
 
 function ProductCard({

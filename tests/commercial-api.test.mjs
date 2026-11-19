@@ -430,24 +430,37 @@ test("real HTTP handlers enforce sessions, admin roles, input validation and ori
       area_m2: 76.25,
       notes: "Forro de gesso",
     };
-    const patch = (path, session, payload) => request(path, session, payload, "http://ouro.test", "PATCH");
+    const patch = (path, session, payload) =>
+      request(path, session, payload, "http://ouro.test", "PATCH");
     assert.equal((await request("portal/worksites", buyerToken, site)).status, 409);
     assert.equal((await patch("portal/business", staffToken, company)).status, 403);
     assert.equal((await patch("portal/business", buyerToken, company)).status, 200);
-    assert.equal((await request("portal/worksites", buyerToken, { ...site, unit: "" })).status, 400);
+    assert.equal(
+      (await request("portal/worksites", buyerToken, { ...site, unit: "" })).status,
+      400,
+    );
     const savedSite = await request("portal/worksites", buyerToken, site);
     assert.equal(savedSite.status, 201);
     const { id: worksiteId } = await savedSite.json();
-    const otherBuyer = { ...bulk, email: "other-cnpj@example.invalid", document: "11.222.333/0001-81" };
+    const otherBuyer = {
+      ...bulk,
+      email: "other-cnpj@example.invalid",
+      document: "11.222.333/0001-81",
+    };
     assert.equal((await request("auth/register", null, otherBuyer)).status, 201);
     const otherLogin = await request("auth/login", null, {
-      email: otherBuyer.email, password: otherBuyer.password, access: "client",
+      email: otherBuyer.email,
+      password: otherBuyer.password,
+      access: "client",
     });
     assert.equal(otherLogin.status, 200);
     const otherToken = otherLogin.headers.get("set-cookie").match(/preciso_session=([a-f0-9]+)/)[1];
     assert.equal((await patch("portal/business", otherToken, company)).status, 200);
     assert.equal((await patch(`portal/worksites/${worksiteId}`, otherToken, site)).status, 404);
-    assert.equal((await patch(`portal/worksites/${worksiteId}`, buyerToken, { ...site, area_m2: 80 })).status, 200);
+    assert.equal(
+      (await patch(`portal/worksites/${worksiteId}`, buyerToken, { ...site, area_m2: 80 })).status,
+      200,
+    );
     const buyerBusiness = await (await request("portal/business", buyerToken)).json();
     assert.equal(buyerBusiness.document, "12345678000195");
     assert.deepEqual(buyerBusiness.company, company);

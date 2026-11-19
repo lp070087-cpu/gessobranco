@@ -19,23 +19,31 @@ const order = z
   })
   .strict();
 const quantity = order.pick({ unit_id: true, quantity: true });
-const businessDetails = z.object({
-  name: z.string().trim().min(2).max(160),
-  trade_name: z.string().trim().max(160).default(""),
-}).strict();
+const businessDetails = z
+  .object({
+    name: z.string().trim().min(2).max(160),
+    trade_name: z.string().trim().max(160).default(""),
+  })
+  .strict();
 
-const worksiteDetails = z.object({
-  name: z.string().trim().min(2).max(160),
-  property_type: z.enum(["apartment", "house", "commercial", "other"]),
-  address: z.string().trim().min(5).max(300),
-  unit: z.string().trim().max(80).default(""),
-  area_m2: z.number().min(0.01).max(1_000_000)
-    .refine((area) => Math.abs(area * 100 - Math.round(area * 100)) < 0.000001),
-  notes: z.string().trim().max(2000).default(""),
-}).strict().refine((site) => site.property_type !== "apartment" || site.unit !== "", {
-  message: "Informe o número ou a identificação do apartamento.",
-  path: ["unit"],
-});
+const worksiteDetails = z
+  .object({
+    name: z.string().trim().min(2).max(160),
+    property_type: z.enum(["apartment", "house", "commercial", "other"]),
+    address: z.string().trim().min(5).max(300),
+    unit: z.string().trim().max(80).default(""),
+    area_m2: z
+      .number()
+      .min(0.01)
+      .max(1_000_000)
+      .refine((area) => Math.abs(area * 100 - Math.round(area * 100)) < 0.000001),
+    notes: z.string().trim().max(2000).default(""),
+  })
+  .strict()
+  .refine((site) => site.property_type !== "apartment" || site.unit !== "", {
+    message: "Informe o número ou a identificação do apartamento.",
+    path: ["unit"],
+  });
 
 const prices = (userId: string, unitId: string, amount: number) => sql`
   WITH context AS (
@@ -106,7 +114,8 @@ export async function portal(
       return noCache({
         eligible: true,
         document: customer.document,
-        company: customer.name == null ? null : { name: customer.name, trade_name: customer.trade_name },
+        company:
+          customer.name == null ? null : { name: customer.name, trade_name: customer.trade_name },
         worksites: worksites.rows,
       });
     }
@@ -122,8 +131,10 @@ export async function portal(
     }
 
     const edit = /^portal\/worksites\/([^/]+)$/.exec(path);
-    if ((path === "portal/worksites" && request.method === "POST") ||
-        (edit && request.method === "PATCH")) {
+    if (
+      (path === "portal/worksites" && request.method === "POST") ||
+      (edit && request.method === "PATCH")
+    ) {
       if (customer.name == null)
         return noCache({ error: "Cadastre sua empresa antes de salvar uma obra." }, 409);
       const site = worksiteDetails.parse(await read());

@@ -123,27 +123,29 @@ function Account({ user }: { user: CompanyActor }) {
     <AccountLayout
       key={secao ?? "historico"}
       label="Menu da conta"
-      menu={options.filter(({ section }) => section !== "empresa" || business.data?.eligible).map(({ label, section, icon: Icon }) => (
-        <Link
-          key={label}
-          to="/minha-conta"
-          search={section ? { secao: section } : {}}
-          activeOptions={{ exact: true, includeSearch: false }}
-          aria-current={secao === section ? "page" : undefined}
-          activeProps={{ "aria-current": secao === section ? "page" : undefined }}
-          className="account-menu-item"
-        >
-          <Icon size={17} aria-hidden="true" />
-          {label}
-        </Link>
-      ))}
+      menu={options
+        .filter(({ section }) => section !== "empresa" || business.data?.eligible)
+        .map(({ label, section, icon: Icon }) => (
+          <Link
+            key={label}
+            to="/minha-conta"
+            search={section ? { secao: section } : {}}
+            activeOptions={{ exact: true, includeSearch: false }}
+            aria-current={secao === section ? "page" : undefined}
+            activeProps={{ "aria-current": secao === section ? "page" : undefined }}
+            className="account-menu-item"
+          >
+            <Icon size={17} aria-hidden="true" />
+            {label}
+          </Link>
+        ))}
     >
       {secao === "materiais" && <Materials done={showHistory} />}
       {secao === "orcamento" && <QuotesForm done={showHistory} />}
       {!secao && <History />}
       {secao === "agenda" && <Appointments />}
-      {secao === "empresa" && (
-        business.data?.eligible ? (
+      {secao === "empresa" &&
+        (business.data?.eligible ? (
           <CustomerBusiness data={business.data} reload={business.reload} />
         ) : (
           <section className="panel">
@@ -154,8 +156,7 @@ function Account({ user }: { user: CompanyActor }) {
               <PortalStatus error={business.error} loaded={false} />
             )}
           </section>
-        )
-      )}
+        ))}
       {secao === "configuracoes" && (
         <section className="panel account-profile">
           <h2>Dados da conta</h2>

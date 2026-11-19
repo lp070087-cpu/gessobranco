@@ -100,13 +100,21 @@ export function CustomerBusiness({ data, reload }: { data: EligibleBusiness; rel
           <fieldset disabled={pending} className="form-grid">
             <label>
               Razão social
-              <input name="name" required minLength={2} maxLength={160} defaultValue={company?.name} />
+              <input
+                name="name"
+                required
+                minLength={2}
+                maxLength={160}
+                defaultValue={company?.name}
+              />
             </label>
             <label>
               Nome fantasia <span className="hint">(opcional)</span>
               <input name="trade_name" maxLength={160} defaultValue={company?.trade_name} />
             </label>
-            <div><button className="action primary">Salvar empresa</button></div>
+            <div>
+              <button className="action primary">Salvar empresa</button>
+            </div>
           </fieldset>
         </form>
       </section>
@@ -120,32 +128,71 @@ export function CustomerBusiness({ data, reload }: { data: EligibleBusiness; rel
             {data.worksites.map((entry) => (
               <article key={entry.id} className="panel space">
                 <h3>{entry.name}</h3>
-                <p>{propertyTypes[entry.property_type]} · {quantityBR(Number(entry.area_m2))} m²</p>
-                <p>{entry.address}{entry.unit && ` · ${entry.unit}`}</p>
+                <p>
+                  {propertyTypes[entry.property_type]} · {quantityBR(Number(entry.area_m2))} m²
+                </p>
+                <p>
+                  {entry.address}
+                  {entry.unit && ` · ${entry.unit}`}
+                </p>
                 {entry.notes && <p>{entry.notes}</p>}
-                <button type="button" className="action space" disabled={pending} onClick={() => {
-                  setSite(entry);
-                  setAdding(true);
-                }}>Editar obra</button>
+                <button
+                  type="button"
+                  className="action space"
+                  disabled={pending}
+                  onClick={() => {
+                    setSite(entry);
+                    setAdding(true);
+                  }}
+                >
+                  Editar obra
+                </button>
               </article>
             ))}
             {adding ? (
-              <WorksiteForm key={site?.id ?? "new"} site={site} pending={pending}
-                save={saveSite} cancel={() => { setAdding(false); setSite(null); }} />
+              <WorksiteForm
+                key={site?.id ?? "new"}
+                site={site}
+                pending={pending}
+                save={saveSite}
+                cancel={() => {
+                  setAdding(false);
+                  setSite(null);
+                }}
+              />
             ) : (
-              <button type="button" className="action primary space" disabled={pending}
-                onClick={() => setAdding(true)}>Cadastrar obra</button>
+              <button
+                type="button"
+                className="action primary space"
+                disabled={pending}
+                onClick={() => setAdding(true)}
+              >
+                Cadastrar obra
+              </button>
             )}
           </>
         )}
-        {error && <p className="notice error space" role="alert">{error}</p>}
-        {notice && <p className="notice space" role="status">{notice}</p>}
+        {error && (
+          <p className="notice error space" role="alert">
+            {error}
+          </p>
+        )}
+        {notice && (
+          <p className="notice space" role="status">
+            {notice}
+          </p>
+        )}
       </section>
     </>
   );
 }
 
-function WorksiteForm({ site, pending, save, cancel }: {
+function WorksiteForm({
+  site,
+  pending,
+  save,
+  cancel,
+}: {
   site: Worksite | null;
   pending: boolean;
   save: (event: FormEvent<HTMLFormElement>) => void;
@@ -156,35 +203,79 @@ function WorksiteForm({ site, pending, save, cancel }: {
     <form onSubmit={save} className="commercial space">
       <h3>{site ? "Editar obra" : "Nova obra"}</h3>
       <fieldset disabled={pending} className="form-grid">
-        <label>Nome da obra
-          <input name="name" required minLength={2} maxLength={160} defaultValue={site?.name}
-            placeholder="Ex. Reforma do apartamento" />
+        <label>
+          Nome da obra
+          <input
+            name="name"
+            required
+            minLength={2}
+            maxLength={160}
+            defaultValue={site?.name}
+            placeholder="Ex. Reforma do apartamento"
+          />
         </label>
-        <label>Tipo de imóvel
-          <select name="property_type" value={type}
-            onChange={(event) => setType(event.target.value as Worksite["property_type"])}>
-            {Object.entries(propertyTypes).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+        <label>
+          Tipo de imóvel
+          <select
+            name="property_type"
+            value={type}
+            onChange={(event) => setType(event.target.value as Worksite["property_type"])}
+          >
+            {Object.entries(propertyTypes).map(([key, label]) => (
+              <option key={key} value={key}>
+                {label}
+              </option>
+            ))}
           </select>
         </label>
-        <label>Endereço da obra
-          <input name="address" required minLength={5} maxLength={300} defaultValue={site?.address}
-            placeholder="Rua, número, bairro, cidade e UF" />
+        <label>
+          Endereço da obra
+          <input
+            name="address"
+            required
+            minLength={5}
+            maxLength={300}
+            defaultValue={site?.address}
+            placeholder="Rua, número, bairro, cidade e UF"
+          />
         </label>
-        <label>{type === "apartment" ? "Apartamento e bloco" : "Complemento (opcional)"}
-          <input name="unit" maxLength={80} required={type === "apartment"} defaultValue={site?.unit}
-            placeholder={type === "apartment" ? "Ex. 302, bloco B" : undefined} />
+        <label>
+          {type === "apartment" ? "Apartamento e bloco" : "Complemento (opcional)"}
+          <input
+            name="unit"
+            maxLength={80}
+            required={type === "apartment"}
+            defaultValue={site?.unit}
+            placeholder={type === "apartment" ? "Ex. 302, bloco B" : undefined}
+          />
         </label>
-        <label>Área do serviço em m²
-          <input name="area_m2" type="number" required min="0.01" max="1000000" step="0.01"
-            defaultValue={site?.area_m2} placeholder="Ex. 75,50" />
+        <label>
+          Área do serviço em m²
+          <input
+            name="area_m2"
+            type="number"
+            required
+            min="0.01"
+            max="1000000"
+            step="0.01"
+            defaultValue={site?.area_m2}
+            placeholder="Ex. 75,50"
+          />
         </label>
-        <label>Serviço previsto (opcional)
-          <textarea name="notes" maxLength={2000} defaultValue={site?.notes}
-            placeholder="Ex. Forro de gesso na sala e nos quartos" />
+        <label>
+          Serviço previsto (opcional)
+          <textarea
+            name="notes"
+            maxLength={2000}
+            defaultValue={site?.notes}
+            placeholder="Ex. Forro de gesso na sala e nos quartos"
+          />
         </label>
         <div>
           <button className="action primary">Salvar obra</button>{" "}
-          <button type="button" className="action" onClick={cancel}>Cancelar</button>
+          <button type="button" className="action" onClick={cancel}>
+            Cancelar
+          </button>
         </div>
       </fieldset>
     </form>
