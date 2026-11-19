@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
+import { Link } from "@tanstack/react-router";
 import { ArrowUpRight } from "lucide-react";
 import { commercialFetch, moneyBR, quantityBR } from "@/lib/commercial-client";
+import { hasManagementAccess } from "./AccountMenu";
+import type { CompanyActor } from "@/lib/company-permissions";
 import { CompanyRequestDialog, type RequestContext } from "./CompanyRequestDialog";
 import gessoImage from "@/assets/service-gesso.jpg";
 import "./commercial.css";
@@ -13,15 +16,21 @@ type PublicProduct = {
   base_unit: string;
   image_url: string | null;
   available: boolean;
-  units: { name: string; factor: string; price: string | null }[];
+  units: { id?: string; name: string; factor: string; price: string | null }[];
 };
 
 export function PublicProducts() {
   const [products, setProducts] = useState<PublicProduct[]>([]);
   const [status, setStatus] = useState("loading");
   const [selected, setSelected] = useState<RequestContext | null>(null);
+  const [customer, setCustomer] = useState(false);
   useEffect(() => {
     const controller = new AbortController();
+    void commercialFetch<{ user: CompanyActor }>("auth/me", undefined, controller.signal)
+      .then(({ user }) => {
+        if (!controller.signal.aborted) setCustomer(!hasManagementAccess(user));
+      })
+      .catch(() => {});
     void commercialFetch<PublicProduct[]>("catalogue", undefined, controller.signal)
       .then((data) => {
         if (!controller.signal.aborted) {
@@ -64,7 +73,12 @@ export function PublicProducts() {
       )}
       <div className="editorial-services">
         {(products.length ? products : status === "loading" ? [] : [sample]).map((product) => (
-          <ProductCard key={product.id} product={product} onRequest={setSelected} />
+          <ProductCard
+            key={product.id}
+            product={product}
+            customer={customer}
+            onRequest={setSelected}
+          />
         ))}
       </div>
       {selected && <CompanyRequestDialog context={selected} close={() => setSelected(null)} />}
@@ -89,14 +103,49 @@ const sample: PublicProduct = {
 function ProductCard({
   product,
   onRequest,
+  customer,
 }: {
   product: PublicProduct;
   onRequest: (context: RequestContext) => void;
+  customer: boolean;
 }) {
   const [unitName, setUnitName] = useState(product.units[0]?.name ?? "");
   const [quantity, setQuantity] = useState("1");
   const unit = product.units.find((entry) => entry.name === unitName);
   const reference = product.id === "reference";
+  const unitId = customer ? unit?.id : undefined;
+  const [pricing, setPricing] = useState<{
+    unit: string;
+    quantity: string;
+    price: number | string | null;
+    next_tier: { quantity: number; price: number } | null;
+  } | null>(null);
+  useEffect(() => {
+    if (!unitId || Number(quantity) <= 0 || Number(quantity) > 1_000_000) return;
+    const controller = new AbortController();
+    const id = unitId;
+    const timeout = window.setTimeout(() => {
+      void commercialFetch<Pick<NonNullable<typeof pricing>, "price" | "next_tier">>(
+        "portal/price",
+        {
+          unit_id: id,
+          quantity: Number(quantity),
+        },
+        controller.signal,
+      )
+        .then((quote) => {
+          if (!controller.signal.aborted) setPricing({ unit: id, quantity, ...quote });
+        })
+        .catch(() => {});
+    }, 300);
+    return () => {
+      window.clearTimeout(timeout);
+      controller.abort();
+    };
+  }, [unitId, quantity]);
+  const quote = pricing?.unit === unitId && pricing?.quantity === quantity ? pricing : null;
+  const estimate = unitId ? quote?.price : unit?.price;
+  const tier = quote?.next_tier;
   return (
     <article data-reveal>
       {product.image_url && (
@@ -148,6 +197,7 @@ function ProductCard({
             product_id: reference || !unitName ? undefined : product.id,
             unit_name: unitName || undefined,
             quantity: unitName ? Number(quantity) : undefined,
+            order_unit_id: unitId,
           });
         }}
       >
@@ -182,13 +232,30 @@ function ProductCard({
             {quantityBR(Number(unit.factor) * Number(quantity))} {product.base_unit}
           </p>
         )}
-        {unit?.price != null && Number(quantity) > 0 && (
-          <p aria-live="polite">Valor estimado {moneyBR(Number(unit.price) * Number(quantity))}</p>
+        {estimate != null && Number(quantity) > 0 && (
+          <p aria-live="polite">
+            Valor estimado {moneyBR(Number(estimate) * Number(quantity))} · {moneyBR(estimate)} por
+            unidade
+          </p>
+        )}
+        {tier && (
+          <p aria-live="polite">
+            Faltam {quantityBR(tier.quantity - Number(quantity))} para pagar{" "}
+            <strong>{moneyBR(tier.price)}</strong> por unidade.{" "}
+            <button type="button" onClick={() => setQuantity(String(tier.quantity))}>
+              Aplicar faixa de {quantityBR(tier.quantity)}
+            </button>
+          </p>
         )}
         <button className="editorial-text-link">
           Solicitar orçamento <ArrowUpRight size={17} aria-hidden="true" />
         </button>
       </form>
+      {!reference && (
+        <Link to="/minha-conta" search={{ secao: "materiais" }} className="editorial-text-link">
+          Ver preços por quantidade na minha conta <ArrowUpRight size={17} aria-hidden="true" />
+        </Link>
+      )}
     </article>
   );
 }

@@ -15,8 +15,14 @@ import { hasManagementAccess, managementHome } from "@/components/preciso/Accoun
 import type { CompanyActor } from "@/lib/company-permissions";
 
 export const Route = createFileRoute("/login")({
-  validateSearch: (search: Record<string, unknown>): { acesso?: "gestao" } =>
-    search.acesso === "gestao" ? { acesso: "gestao" } : {},
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { acesso?: "gestao"; destino?: "materiais" } =>
+    search.acesso === "gestao"
+      ? { acesso: "gestao" }
+      : search.destino === "materiais"
+        ? { destino: "materiais" }
+        : {},
   head: () => ({
     meta: [
       { title: "Entrar — Ouro Branco" },
@@ -36,7 +42,8 @@ const schema = z.object({
 
 function LoginPage() {
   const navigate = useNavigate();
-  const management = Route.useSearch().acesso === "gestao";
+  const { acesso, destino } = Route.useSearch();
+  const management = acesso === "gestao";
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPass, setShowPass] = useState(false);
@@ -45,13 +52,25 @@ function LoginPage() {
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
   const [shake, setShake] = useState(false);
 
-  function openAccount(user: CompanyActor) {
-    if (hasManagementAccess(user)) {
-      void navigate({ to: managementHome(user), replace: true });
-    } else {
-      if (management) toast.info("Este e-mail tem acesso à área do cliente.");
-      void navigate({ to: "/minha-conta", replace: true });
+  async function openAccount(user: CompanyActor, legacy = false) {
+    const staff = hasManagementAccess(user);
+    if (staff !== management) {
+      await commercialFetch("auth/logout", {});
+      if (legacy) await supabase.auth.signOut({ scope: "local" });
+      setErrors({
+        password: staff
+          ? "Use o link de acesso da gestão Ouro Branco."
+          : "Esta conta usa o acesso exclusivo do cliente.",
+      });
+      return;
     }
+    if (staff) void navigate({ to: managementHome(user), replace: true });
+    else
+      void navigate({
+        to: "/minha-conta",
+        search: destino ? { secao: destino } : {},
+        replace: true,
+      });
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -71,10 +90,11 @@ function LoginPage() {
       await commercialFetch("auth/login", {
         ...parsed.data,
         keep_connected: keepConnected,
+        access: management ? "management" : "client",
       });
       const { user } = await commercialFetch<{ user: CompanyActor }>("auth/me");
       toast.success("Bem-vindo de volta.");
-      openAccount(user);
+      await openAccount(user);
     } catch (failure) {
       try {
         const status = (failure as { status?: number }).status;
@@ -86,7 +106,7 @@ function LoginPage() {
             access_token: legacy.data.session.access_token,
           });
           const { user } = await commercialFetch<{ user: CompanyActor }>("auth/me");
-          openAccount(user);
+          await openAccount(user, true);
         } catch {
           if (management) throw failure;
           navigate({ to: "/home", replace: true });
@@ -95,7 +115,8 @@ function LoginPage() {
         setPassword("");
         setErrors({
           password:
-            failure instanceof Error && (failure as { status?: number }).status === 429
+            failure instanceof Error &&
+            [403, 429].includes((failure as { status?: number }).status ?? 0)
               ? failure.message
               : "Não foi possível entrar. Confira o e-mail e a senha.",
         });
@@ -206,19 +227,13 @@ function LoginPage() {
 
             <Link
               to="/signup"
+              search={destino ? { destino } : {}}
               className="flex h-12 w-full items-center justify-center rounded-md border border-border bg-surface text-sm font-medium hover:bg-surface-elevated transition-colors"
             >
               Criar conta
             </Link>
           </>
         )}
-        <Link
-          to="/login"
-          search={management ? {} : { acesso: "gestao" }}
-          className="flex min-h-12 items-center justify-center text-sm text-accent"
-        >
-          {management ? "Login do cliente" : "Login da gestão da loja e da empresa"}
-        </Link>
       </form>
     </AuthShell>
   );

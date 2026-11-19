@@ -15,6 +15,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { LoadingSkeleton } from "@/components/preciso/LoadingSkeleton";
+import { InstallApp } from "@/components/preciso/InstallApp";
 import "@/components/preciso/client-experience.css";
 
 export const Route = createFileRoute("/_app")({
@@ -102,6 +103,7 @@ function AppShell() {
                       <span>{m.label}</span>
                     </Link>
                   ))}
+                  <InstallApp />
                   <button
                     onClick={handleSignOut}
                     className="mt-2 flex items-center gap-3 px-3 py-3 rounded-lg text-sm text-destructive hover:bg-destructive/10 transition-colors"

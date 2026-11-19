@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
-import { Eye, EyeOff, Loader2, User2, Building2 } from "lucide-react";
+import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { z } from "zod";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -8,23 +8,23 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { AuthShell } from "@/components/preciso/AuthShell";
-import { cn } from "@/lib/utils";
+import { validDocument, type DocumentType } from "@/lib/customer-document";
 import { commercialFetch } from "@/lib/commercial-client";
 
 export const Route = createFileRoute("/signup")({
+  validateSearch: (search: Record<string, unknown>): { destino?: "materiais" } =>
+    search.destino === "materiais" ? { destino: "materiais" } : {},
   head: () => ({
     meta: [
       { title: "Criar conta — Ouro Branco" },
       {
         name: "description",
-        content: "Cadastre-se como cliente ou empresa e comece a orçar em minutos.",
+        content: "Cadastre-se como cliente para solicitar orçamentos e pedidos.",
       },
     ],
   }),
   component: SignupPage,
 });
-
-type AccountType = "cliente" | "empresa";
 
 const baseShape = {
   email: z.string().trim().email("E-mail inválido").max(255),
@@ -37,18 +37,7 @@ const baseShape = {
 const clientSchema = z
   .object({
     fullName: z.string().trim().min(2, "Informe seu nome").max(120),
-    ...baseShape,
-  })
-  .refine((d) => d.password === d.confirmPassword, {
-    path: ["confirmPassword"],
-    message: "As senhas não coincidem",
-  });
-
-const companySchema = z
-  .object({
-    companyName: z.string().trim().min(2, "Informe o nome da empresa").max(120),
-    responsibleName: z.string().trim().min(2, "Informe o responsável").max(120),
-    cnpj: z.string().trim().max(20).optional().or(z.literal("")),
+    document: z.string().trim().min(1, "Informe seu documento").max(24),
     ...baseShape,
   })
   .refine((d) => d.password === d.confirmPassword, {
@@ -58,7 +47,8 @@ const companySchema = z
 
 function SignupPage() {
   const navigate = useNavigate();
-  const [accountType, setAccountType] = useState<AccountType>("cliente");
+  const { destino } = Route.useSearch();
+  const [documentType, setDocumentType] = useState<DocumentType>("cpf");
   const [showPass, setShowPass] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -66,9 +56,7 @@ function SignupPage() {
 
   const [form, setForm] = useState({
     fullName: "",
-    companyName: "",
-    responsibleName: "",
-    cnpj: "",
+    document: "",
     email: "",
     phone: "",
     password: "",
@@ -83,12 +71,16 @@ function SignupPage() {
     e.preventDefault();
     setErrors({});
 
-    const schema = accountType === "cliente" ? clientSchema : companySchema;
-    const parsed = schema.safeParse(form);
+    const parsed = clientSchema.safeParse(form);
     if (!parsed.success) {
       const fe: Record<string, string> = {};
       parsed.error.issues.forEach((i) => (fe[String(i.path[0])] = i.message));
       setErrors(fe);
+      return;
+    }
+
+    if (!validDocument(documentType, form.document)) {
+      setErrors({ document: "Confira o " + documentType.toUpperCase() + " informado." });
       return;
     }
 
@@ -98,18 +90,21 @@ function SignupPage() {
         email: form.email.trim(),
         password: form.password,
         phone: form.phone,
-        full_name: accountType === "cliente" ? form.fullName : form.responsibleName,
+        full_name: form.fullName,
+        document_type: documentType,
+        document: form.document,
         accepted_terms: form.acceptTerms,
-        ...(accountType === "empresa"
-          ? { company_name: form.companyName, document: form.cnpj }
-          : {}),
       });
       toast.success("Conta criada com sucesso.");
       try {
-        await commercialFetch("auth/login", { email: form.email.trim(), password: form.password });
-        navigate({ to: "/minha-conta", replace: true });
+        await commercialFetch("auth/login", {
+          email: form.email.trim(),
+          password: form.password,
+          access: "client",
+        });
+        navigate({ to: "/minha-conta", search: destino ? { secao: destino } : {}, replace: true });
       } catch {
-        navigate({ to: "/login", replace: true });
+        navigate({ to: "/login", search: destino ? { destino } : {}, replace: true });
       }
     } catch (failure) {
       toast.error("Não foi possível criar a conta", {
@@ -121,67 +116,41 @@ function SignupPage() {
   };
 
   return (
-    <AuthShell title="Criar conta" subtitle="Comece a orçar em minutos.">
-      <div className="mb-6 grid grid-cols-2 gap-3">
-        <TypeCard
-          active={accountType === "cliente"}
-          onClick={() => setAccountType("cliente")}
-          icon={<User2 className="h-5 w-5" />}
-          label="Cliente"
-          desc="Quero orçar"
-        />
-        <TypeCard
-          active={accountType === "empresa"}
-          onClick={() => setAccountType("empresa")}
-          icon={<Building2 className="h-5 w-5" />}
-          label="Empresa"
-          desc="Sou profissional"
-        />
-      </div>
-
-      <form
-        onSubmit={handleSubmit}
-        className="space-y-4 animate-fade-in-up"
-        noValidate
-        key={accountType}
-      >
-        {accountType === "cliente" ? (
-          <Field label="Nome completo" error={errors.fullName}>
-            <Input
-              value={form.fullName}
-              onChange={(e) => update("fullName", e.target.value)}
-              placeholder="Seu nome"
-              className="h-12 bg-surface border-border"
-            />
-          </Field>
-        ) : (
-          <>
-            <Field label="Nome da empresa" error={errors.companyName}>
-              <Input
-                value={form.companyName}
-                onChange={(e) => update("companyName", e.target.value)}
-                placeholder="Razão social ou nome fantasia"
-                className="h-12 bg-surface border-border"
-              />
-            </Field>
-            <Field label="Responsável" error={errors.responsibleName}>
-              <Input
-                value={form.responsibleName}
-                onChange={(e) => update("responsibleName", e.target.value)}
-                placeholder="Nome do responsável"
-                className="h-12 bg-surface border-border"
-              />
-            </Field>
-            <Field label="CNPJ (opcional)" error={errors.cnpj}>
-              <Input
-                value={form.cnpj}
-                onChange={(e) => update("cnpj", e.target.value)}
-                placeholder="00.000.000/0000-00"
-                className="h-12 bg-surface border-border font-mono"
-              />
-            </Field>
-          </>
-        )}
+    <AuthShell title="Criar conta de cliente" subtitle="Acompanhe seus pedidos e orçamentos.">
+      <form onSubmit={handleSubmit} className="space-y-4 animate-fade-in-up" noValidate>
+        <Field label="Nome completo" error={errors.fullName}>
+          <Input
+            value={form.fullName}
+            onChange={(event) => update("fullName", event.target.value)}
+            placeholder="Seu nome"
+            className="h-12 bg-surface border-border"
+          />
+        </Field>
+        <label className="block space-y-2 text-sm">
+          <span>Tipo de cadastro</span>
+          <select
+            className="h-12 w-full rounded-md border border-border bg-surface px-3"
+            value={documentType}
+            onChange={(event) => {
+              setDocumentType(event.target.value === "cnpj" ? "cnpj" : "cpf");
+              update("document", "");
+              setErrors({});
+            }}
+          >
+            <option value="cpf">Pessoa física (CPF)</option>
+            <option value="cnpj">Pessoa jurídica (CNPJ)</option>
+          </select>
+        </label>
+        <Field label={documentType.toUpperCase()} error={errors.document}>
+          <Input
+            value={form.document}
+            maxLength={24}
+            inputMode={documentType === "cpf" ? "numeric" : "text"}
+            onChange={(event) => update("document", event.target.value)}
+            placeholder={documentType === "cpf" ? "000.000.000-00" : "00.000.000/0000-00"}
+            className="h-12 bg-surface border-border"
+          />
+        </Field>
 
         <Field label="E-mail" error={errors.email}>
           <Input
@@ -209,7 +178,7 @@ function SignupPage() {
               type={showPass ? "text" : "password"}
               value={form.password}
               onChange={(e) => update("password", e.target.value)}
-              placeholder="Mínimo 6 caracteres"
+              placeholder="Mínimo 12 caracteres"
               className="h-12 bg-surface border-border pr-10"
             />
             <button
@@ -273,7 +242,11 @@ function SignupPage() {
 
         <p className="text-center text-sm text-muted-foreground">
           Já tem conta?{" "}
-          <Link to="/login" className="text-gold hover:underline">
+          <Link
+            to="/login"
+            search={destino ? { destino } : {}}
+            className="text-gold hover:underline"
+          >
             Entrar
           </Link>
         </p>
@@ -297,43 +270,5 @@ function Field({
       {children}
       {error && <p className="text-xs text-destructive">{error}</p>}
     </div>
-  );
-}
-
-function TypeCard({
-  active,
-  onClick,
-  icon,
-  label,
-  desc,
-}: {
-  active: boolean;
-  onClick: () => void;
-  icon: React.ReactNode;
-  label: string;
-  desc: string;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        "group relative rounded-2xl border p-4 text-left transition-all",
-        active
-          ? "border-gold bg-gold-soft shadow-[0_15px_40px_-20px_oklch(0.74_0.115_78/0.5)]"
-          : "border-border bg-surface hover:bg-surface-elevated",
-      )}
-    >
-      <div
-        className={cn(
-          "flex h-9 w-9 items-center justify-center rounded-lg transition-colors",
-          active ? "bg-gold text-primary-foreground" : "bg-surface-elevated text-muted-foreground",
-        )}
-      >
-        {icon}
-      </div>
-      <p className="mt-3 text-sm font-semibold">{label}</p>
-      <p className="text-xs text-muted-foreground">{desc}</p>
-    </button>
   );
 }

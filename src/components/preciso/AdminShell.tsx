@@ -181,6 +181,7 @@ export function AdminShell({
             </Link>
           );
         })}
+        <InstallApp />
       </nav>
       <div className="p-3 border-t border-border space-y-0.5">
         <Link
@@ -348,3 +349,4 @@ export const inputCss =
 // re-export for unused warnings
 export { X };
 import { LoadingSkeleton } from "@/components/preciso/LoadingSkeleton";
+import { InstallApp } from "@/components/preciso/InstallApp";

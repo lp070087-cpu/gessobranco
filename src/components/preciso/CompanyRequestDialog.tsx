@@ -13,6 +13,7 @@ export type RequestContext = {
   subject?: string;
   product_id?: string;
   unit_name?: string;
+  order_unit_id?: string;
   quantity?: number;
 };
 
@@ -27,6 +28,7 @@ export function CompanyRequestDialog({
   const [status, setStatus] = useState<"idle" | "sending" | "sent">("idle");
   const [error, setError] = useState("");
   const material = context.kind === "material";
+  const orderUnit = context.order_unit_id;
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (status === "sending") return;
@@ -35,21 +37,29 @@ export function CompanyRequestDialog({
     setStatus("sending");
     setError("");
     try {
-      await commercialFetch("company-requests", {
-        ...context,
-        request_key: key.current,
-        name: String(values.get("name")),
-        email: String(values.get("email")),
-        phone: String(values.get("phone")),
-        subject: context.subject ?? String(values.get("subject")),
-        notes: String(values.get("notes")),
-        ...(material
-          ? {
-              unit_name: context.unit_name ?? String(values.get("unit_name")),
-              quantity: context.quantity ?? Number(values.get("quantity")),
-            }
-          : {}),
-      });
+      if (orderUnit) {
+        await commercialFetch("portal/orders", {
+          request_key: key.current,
+          unit_id: orderUnit,
+          quantity: context.quantity,
+          notes: String(values.get("notes")),
+        });
+      } else
+        await commercialFetch("company-requests", {
+          ...context,
+          request_key: key.current,
+          name: String(values.get("name")),
+          email: String(values.get("email")),
+          phone: String(values.get("phone")),
+          subject: context.subject ?? String(values.get("subject")),
+          notes: String(values.get("notes")),
+          ...(material
+            ? {
+                unit_name: context.unit_name ?? String(values.get("unit_name")),
+                quantity: context.quantity ?? Number(values.get("quantity")),
+              }
+            : {}),
+        });
       setStatus("sent");
     } catch (failure) {
       setError(
@@ -122,18 +132,22 @@ export function CompanyRequestDialog({
                 {context.quantity.toLocaleString("pt-BR")} × {context.unit_name}
               </p>
             )}
-            <label>
-              Nome
-              <input name="name" autoComplete="name" required minLength={2} maxLength={160} />
-            </label>
-            <label>
-              E-mail
-              <input name="email" type="email" autoComplete="email" required maxLength={254} />
-            </label>
-            <label>
-              Telefone
-              <input name="phone" type="tel" autoComplete="tel" maxLength={40} />
-            </label>
+            {!orderUnit && (
+              <>
+                <label>
+                  Nome
+                  <input name="name" autoComplete="name" required minLength={2} maxLength={160} />
+                </label>
+                <label>
+                  E-mail
+                  <input name="email" type="email" autoComplete="email" required maxLength={254} />
+                </label>
+                <label>
+                  Telefone
+                  <input name="phone" type="tel" autoComplete="tel" maxLength={40} />
+                </label>
+              </>
+            )}
             <label>
               Detalhes do pedido
               <textarea name="notes" rows={3} maxLength={2000} />

@@ -8,11 +8,13 @@ import { PanelSkeleton } from "@/components/preciso/LoadingSkeleton";
 export function CompanySession({
   title,
   management,
+  destination,
   allowed,
   children,
 }: {
   title: string;
   management?: boolean;
+  destination?: "materiais";
   allowed?: (user: CompanyActor) => boolean;
   children: (user: CompanyActor) => ReactNode;
 }) {
@@ -112,7 +114,13 @@ export function CompanySession({
           ) : (
             <Link
               to="/login"
-              search={management || allowed ? { acesso: "gestao" } : {}}
+              search={
+                management || allowed
+                  ? { acesso: "gestao" }
+                  : destination
+                    ? { destino: destination }
+                    : {}
+              }
               className="action primary"
             >
               {management || allowed

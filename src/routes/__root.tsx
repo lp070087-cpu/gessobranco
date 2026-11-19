@@ -14,7 +14,6 @@ import appCss from "../styles.css?url";
 import productCss from "../components/preciso/product.css?url";
 import { ProductMotion } from "@/components/preciso/ProductMotion";
 import { Toaster } from "@/components/ui/sonner";
-import { InstallApp } from "@/components/preciso/InstallApp";
 import { RoutePendingSkeleton } from "@/components/preciso/LoadingSkeleton";
 
 function NotFoundComponent() {
@@ -141,7 +140,6 @@ function RootComponent() {
       <Suspense fallback={<RoutePendingSkeleton />}>
         <Outlet />
       </Suspense>
-      <InstallApp />
       <ProductMotion />
       <Toaster richColors position="top-center" />
     </QueryClientProvider>

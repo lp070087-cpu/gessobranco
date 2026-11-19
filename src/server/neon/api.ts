@@ -8,6 +8,7 @@ import { commercialRequest, publicCatalogue } from "./commercial";
 import { companyRequests, createCompanyRequest } from "./company-requests";
 import { cfoRequest, scheduledCfo } from "./cfo";
 import { portal } from "./portal";
+import { normalizeDocument, validDocument } from "@/lib/customer-document";
 import {
   businessAddress,
   businessSettingsSchema,
@@ -41,13 +42,17 @@ const credentials = z
     password: z.string().min(12).max(128),
   })
   .strict();
-const registration = credentials.extend({
-  full_name: z.string().trim().min(2).max(160),
-  phone: z.string().trim().max(30).default(""),
-  company_name: z.string().trim().min(2).max(160).optional(),
-  document: z.string().trim().max(30).optional(),
-  accepted_terms: z.boolean().default(false),
-});
+const registration = credentials
+  .extend({
+    full_name: z.string().trim().min(2).max(160),
+    phone: z.string().trim().max(30).default(""),
+    document_type: z.enum(["cpf", "cnpj"]).optional(),
+    document: z.string().trim().max(30).optional(),
+    accepted_terms: z.boolean().default(false),
+  })
+  .refine(({ document_type, document }) =>
+    document_type ? !!document && validDocument(document_type, document) : document === undefined,
+  );
 const proposalLine = z
   .object({
     quantity: z.number().finite().min(0.001).max(10_000_000),
@@ -315,11 +320,9 @@ export async function handleNeonRequest(request: Request, now = new Date()): Pro
         VALUES (${input.email},${input.full_name},${passwordHash},'client')
         ON CONFLICT(email) DO NOTHING RETURNING id
       ), profile AS (
-        INSERT INTO preciso.client_profiles(user_id,phone,accepted_terms_at)
-        SELECT id,${input.phone},CASE WHEN ${input.accepted_terms}::boolean THEN now() END FROM account
-      ), business AS (
-        INSERT INTO preciso.companies(owner_id,name,document) SELECT id,${input.company_name ?? null},${input.document ?? null} FROM account
-        WHERE ${input.company_name ?? null}::text IS NOT NULL
+        INSERT INTO preciso.client_profiles(user_id,phone,accepted_terms_at,document_type,document)
+        SELECT id,${input.phone},CASE WHEN ${input.accepted_terms}::boolean THEN now() END,
+          ${input.document_type ?? null},${input.document ? normalizeDocument(input.document) : null} FROM account
       ) SELECT id FROM account`);
       return registered.rows.length
         ? json({ ok: true }, 201)
@@ -339,7 +342,10 @@ export async function handleNeonRequest(request: Request, now = new Date()): Pro
     }
     if (path === "auth/login" && request.method === "POST") {
       const input = credentials
-        .extend({ keep_connected: z.boolean().default(true) })
+        .extend({
+          keep_connected: z.boolean().default(true),
+          access: z.enum(["client", "management"]).optional(),
+        })
         .parse(await body(request));
       if (!(await allowAuthentication(db, request, "login", input.email)))
         return json({ error: "Muitas tentativas. Aguarde 15 minutos." }, 429);
@@ -350,6 +356,24 @@ export async function handleNeonRequest(request: Request, now = new Date()): Pro
       );
       if (!user || user.disabled || !valid)
         return json({ error: "Email ou senha inválidos." }, 401);
+      if (input.access) {
+        const staff =
+          user.role === "admin" ||
+          (
+            await db.execute(
+              sql`SELECT 1 FROM preciso.staff_permissions WHERE user_id=${user.id}::uuid LIMIT 1`,
+            )
+          ).rows.length > 0;
+        if (staff !== (input.access === "management"))
+          return json(
+            {
+              error: staff
+                ? "Use o link de acesso da gestão Ouro Branco."
+                : "Esta conta usa o acesso exclusivo do cliente.",
+            },
+            403,
+          );
+      }
       await db.execute(
         sql`DELETE FROM preciso.login_attempts WHERE key_hash = ${sha256(`login:email:${input.email}`)}`,
       );

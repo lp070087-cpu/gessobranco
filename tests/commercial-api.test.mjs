@@ -20,7 +20,13 @@ test("real HTTP handlers enforce sessions, admin roles, input validation and ori
     await db.exec(
       await readFile(new URL("../drizzle/0002_company_requests.sql", import.meta.url), "utf8"),
     );
-    for (const migration of ["0003_company_operations", "0004_cfo", "0005_service_proposals"])
+    for (const migration of [
+      "0003_company_operations",
+      "0004_cfo",
+      "0005_service_proposals",
+      "0006_purchase_deliveries",
+      "0007_customer_documents",
+    ])
       await db.exec(
         await readFile(new URL(`../drizzle/${migration}.sql`, import.meta.url), "utf8"),
       );
@@ -390,6 +396,155 @@ test("real HTTP handlers enforce sessions, admin roles, input validation and ori
     );
     const materials = await (await request("portal/catalogue", staffToken)).json();
     const sack = materials.find((item) => item.name === "Gesso de teste portal").units[0];
+    const bulk = {
+      email: "cnpj@example.invalid",
+      password: staffPassword,
+      full_name: "Cliente CNPJ",
+      document_type: "cnpj",
+      document: "12.345.678/0001-95",
+    };
+    assert.equal(
+      (await request("auth/register", null, { ...bulk, document: "12.345.678/0001-94" })).status,
+      400,
+    );
+    assert.equal(
+      (await request("auth/register", null, { ...bulk, company_name: "Gestão inválida" })).status,
+      400,
+    );
+    assert.equal((await request("auth/register", null, bulk)).status, 201);
+    const buyerLogin = { email: bulk.email, password: bulk.password };
+    assert.equal(
+      (await request("auth/login", null, { ...buyerLogin, access: "management" })).status,
+      403,
+    );
+    const buyer = await request("auth/login", null, { ...buyerLogin, access: "client" });
+    assert.equal(buyer.status, 200);
+    const buyerToken = buyer.headers.get("set-cookie").match(/preciso_session=([a-f0-9]+)/)[1];
+    assert.equal(
+      (
+        await request("auth/login", null, {
+          email: staffEmail,
+          password: staffPassword,
+          access: "client",
+        })
+      ).status,
+      403,
+    );
+    assert.equal(
+      (
+        await request("auth/login", null, {
+          email: staffEmail,
+          password: staffPassword,
+          access: "management",
+        })
+      ).status,
+      200,
+    );
+    for (const [minimum_quantity, price] of [
+      [20, 23],
+      [25, 21],
+      [40, 19],
+    ]) {
+      assert.equal(
+        (
+          await request("commercial/price_rule", token, {
+            request_key: randomUUID(),
+            unit_id: sack.id,
+            profile: "CNPJ",
+            minimum_quantity,
+            price,
+          })
+        ).status,
+        200,
+      );
+    }
+    const getPrice = async (buyer, quantity) =>
+      (await request("portal/price", buyer, { unit_id: sack.id, quantity })).json();
+    const q20 = await getPrice(buyerToken, 20);
+    assert.equal(Number(q20.price), 23);
+    assert.deepEqual(q20.next_tier, { quantity: 25, price: 21 });
+    assert.equal(Number((await getPrice(buyerToken, 25)).price), 21);
+    assert.equal((await getPrice(staffToken, 25)).next_tier, null);
+    assert.equal(Number((await getPrice(staffToken, 25)).price), 25);
+    assert.equal(
+      (
+        await request("portal/orders", buyerToken, {
+          request_key: randomUUID(),
+          unit_id: sack.id,
+          quantity: 25,
+        })
+      ).status,
+      201,
+    );
+    assert.equal(
+      Number((await (await request("portal/orders", buyerToken)).json())[0].quoted_unit_price),
+      21,
+    );
+
+    const productId = materials.find((item) => item.name === "Gesso de teste portal").id;
+    const second = await db.query(`WITH new_product AS (
+      INSERT INTO preciso.commercial_products(name,base_unit,valuation_method)
+      VALUES ('Placa de teste','un','fifo') RETURNING id
+    ) INSERT INTO preciso.commercial_units(product_id,name,factor)
+      SELECT id,'Placa',1 FROM new_product RETURNING id,product_id`);
+    const other = second.rows[0];
+    const items = [
+      { product_id: productId, unit_id: sack.id, quantity: 20, goods_total: 100 },
+      {
+        product_id: other.product_id,
+        unit_id: other.id,
+        quantity: 2,
+        goods_total: 200,
+      },
+    ];
+    const delivery = {
+      request_key: randomUUID(),
+      items,
+      freight: 10.01,
+      other_costs: 2.02,
+      purchased_at: "2090-11-19",
+      due_on: null,
+      reference: "Compra agrupada teste",
+      reason: "Entrega de teste",
+    };
+    const invalidDelivery = {
+      ...delivery,
+      request_key: randomUUID(),
+      items: [items[0], { ...items[1], unit_id: randomUUID() }],
+    };
+    assert.equal(
+      (await request("commercial/purchase_delivery", token, invalidDelivery)).status,
+      409,
+    );
+    assert.equal(
+      Number(
+        (
+          await db.query(
+            "SELECT count(*) FROM preciso.commercial_purchases WHERE reference='Compra agrupada teste'",
+          )
+        ).rows[0].count,
+      ),
+      0,
+    );
+    const shipment = await request("commercial/purchase_delivery", token, delivery);
+    assert.equal(shipment.status, 200);
+    const deliveryId = (await shipment.json()).id;
+    assert.equal(
+      (await (await request("commercial/purchase_delivery", token, delivery)).json()).id,
+      deliveryId,
+    );
+    const history = (await (await request("commercial/state", token)).json()).purchases.filter(
+      (row) => row.delivery_id === deliveryId,
+    );
+    assert.equal(history.length, 2);
+    assert.equal(
+      history.reduce((sum, row) => sum + Math.round(Number(row.freight) * 100), 0),
+      1001,
+    );
+    assert.equal(
+      history.reduce((sum, row) => sum + Math.round(Number(row.total) * 100), 0),
+      31203,
+    );
     assert.equal(
       Number(
         (
@@ -606,6 +761,35 @@ test("real HTTP handlers enforce sessions, admin roles, input validation and ori
     const retried = await (await request("cfo/run", token, retryRange)).json();
     assert.equal(retried.id, failedRun.id);
     assert.equal(retried.status, "succeeded");
+    const payment = {
+      request_key: randomUUID(),
+      delivery_id: deliveryId,
+      method: "pix",
+      amount: 312.03,
+      confirmed: true,
+    };
+    const settlement = await request("commercial/purchase_delivery_payment", token, payment);
+    assert.equal(settlement.status, 200);
+    const settlementId = (await settlement.json()).id;
+    assert.equal(
+      (await (await request("commercial/purchase_delivery_payment", token, payment)).json()).id,
+      settlementId,
+    );
+    const settlementTotal = await db.query(
+      "SELECT count(*) AS parts,sum(amount) AS paid FROM preciso.commercial_purchase_payments WHERE delivery_payment_id=$1",
+      [settlementId],
+    );
+    assert.equal(Number(settlementTotal.rows[0].parts), 2);
+    assert.equal(Number(settlementTotal.rows[0].paid), 312.03);
+    assert.equal(
+      (
+        await request("commercial/purchase_delivery_payment", token, {
+          ...payment,
+          request_key: randomUUID(),
+        })
+      ).status,
+      409,
+    );
     await db.exec("UPDATE preciso.users SET disabled=true WHERE email='client@example.invalid'");
     assert.equal((await request("commercial/state", token)).status, 401);
     delete process.env.DATABASE_URL;

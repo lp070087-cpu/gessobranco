@@ -2,6 +2,7 @@ import { useId, useState, type ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
 import { Building2, ChartNoAxesCombined, ClipboardList, Menu, Settings, Store } from "lucide-react";
 import { hasCompanyPermission, type CompanyActor } from "@/lib/company-permissions";
+import { InstallApp } from "./InstallApp";
 
 export const hasServiceAccess = (user: CompanyActor) =>
   user.role === "admin" || user.permissions.some((permission) => permission.startsWith("service_"));
@@ -102,6 +103,7 @@ export function AccountLayout({
         </button>
         <nav id={id} aria-label={label} className={open ? "is-open" : undefined}>
           {menu}
+          <InstallApp />
         </nav>
       </aside>
       <div className="company-content">{children}</div>

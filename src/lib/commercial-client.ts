@@ -95,6 +95,9 @@ export type Cash = {
 };
 export type Purchase = {
   id: string;
+  delivery_id?: string | null;
+  input_quantity?: string | null;
+  unit_name?: string | null;
   product_id: string;
   supplier_id: string | null;
   reference: string;

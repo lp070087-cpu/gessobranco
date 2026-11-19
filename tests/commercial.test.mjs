@@ -50,6 +50,9 @@ test("commercial commands against isolated PostgreSQL, including reopening persi
       "utf8",
     );
     for (const statement of sqlStatements(migration)) await db.exec(statement);
+    await db.exec(
+      await readFile(new URL("../drizzle/0006_purchase_deliveries.sql", import.meta.url), "utf8"),
+    );
     await db.exec("COMMIT");
     await db.exec("BEGIN");
     for (const statement of sqlStatements(migration)) await db.exec(statement);

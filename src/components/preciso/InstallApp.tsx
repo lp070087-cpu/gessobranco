@@ -99,7 +99,7 @@ export function InstallApp() {
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => void showInstall(nextOpen)}>
       <DialogTrigger asChild>
-        <button type="button" className="ouro-install-action">
+        <button type="button" className="account-menu-item ouro-install-action">
           <Download size={16} aria-hidden="true" /> Instalar app
         </button>
       </DialogTrigger>

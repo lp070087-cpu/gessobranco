@@ -20,11 +20,46 @@ const order = z
   .strict();
 const quantity = order.pick({ unit_id: true, quantity: true });
 const prices = (userId: string, unitId: string, amount: number) => sql`
-  SELECT p.id AS product_id,p.name,u.name AS unit_name,u.factor,
-    CASE WHEN p.public_price OR c.id IS NOT NULL THEN preciso.commercial_price(u.id,c.id,${amount}::numeric) END AS price
-  FROM preciso.commercial_units u JOIN preciso.commercial_products p ON p.id=u.product_id
-  LEFT JOIN preciso.commercial_customers c ON c.account_user_id=${userId}::uuid
-  WHERE u.id=${unitId}::uuid AND p.active AND p.published AND NOT p.example`;
+  WITH context AS (
+    SELECT p.id AS product_id,p.name,u.name AS unit_name,u.factor,u.price AS base_price,p.public_price,
+      c.id AS customer_id,c.profile,coalesce(cp.document_type='cnpj',false) AS is_cnpj
+    FROM preciso.commercial_units u JOIN preciso.commercial_products p ON p.id=u.product_id
+    LEFT JOIN preciso.commercial_customers c ON c.account_user_id=${userId}::uuid
+    LEFT JOIN preciso.client_profiles cp ON cp.user_id=${userId}::uuid
+    WHERE u.id=${unitId}::uuid AND p.active AND p.published AND NOT p.example
+  ), eligible AS (
+    SELECT r.* FROM preciso.commercial_price_rules r CROSS JOIN context c
+    WHERE r.unit_id=${unitId}::uuid AND r.active
+      AND (r.valid_from IS NULL OR r.valid_from<=current_date)
+      AND (r.valid_until IS NULL OR r.valid_until>=current_date)
+      AND (r.customer_id=c.customer_id OR (r.customer_id IS NULL AND (
+        r.profile IS NULL OR (upper(r.profile)='CNPJ' AND c.is_cnpj)
+        OR (upper(r.profile)<>'CNPJ' AND r.profile=c.profile)
+      )))
+  ), current_quote AS (
+    SELECT c.*, CASE
+      WHEN c.public_price OR c.customer_id IS NOT NULL THEN coalesce(r.price,c.base_price)
+      WHEN c.is_cnpj AND upper(r.profile)='CNPJ' THEN r.price
+    END AS price
+    FROM context c LEFT JOIN LATERAL (
+      SELECT e.price,e.profile FROM eligible e WHERE e.minimum_quantity<=${amount}::numeric
+      ORDER BY (e.customer_id IS NOT NULL) DESC,(e.profile IS NOT NULL) DESC,e.minimum_quantity DESC,e.id
+      LIMIT 1
+    ) r ON true
+  )
+  SELECT q.product_id,q.name,q.unit_name,q.factor,q.price,
+    next_tier.minimum_quantity AS next_quantity,next_tier.price AS next_price
+  FROM current_quote q LEFT JOIN LATERAL (
+    SELECT e.minimum_quantity,winner.price
+    FROM eligible e CROSS JOIN LATERAL (
+      SELECT r.price,r.profile FROM eligible r WHERE r.minimum_quantity<=e.minimum_quantity
+      ORDER BY (r.customer_id IS NOT NULL) DESC,(r.profile IS NOT NULL) DESC,r.minimum_quantity DESC,r.id
+      LIMIT 1
+    ) winner
+    WHERE q.is_cnpj AND e.minimum_quantity>${amount}::numeric AND e.minimum_quantity<=1000000
+      AND upper(winner.profile)='CNPJ' AND (q.price IS NULL OR winner.price<q.price)
+    ORDER BY e.minimum_quantity LIMIT 1
+  ) next_tier ON true`;
 
 export async function portal(
   db: Db,
@@ -47,8 +82,18 @@ export async function portal(
   if (path === "portal/price" && request.method === "POST") {
     const data = quantity.parse(await read());
     const result = await db.execute(prices(user.id, data.unit_id, data.quantity));
-    return result.rows[0]
-      ? noCache({ price: result.rows[0].price })
+    const row = result.rows[0];
+    return row
+      ? noCache({
+          price: row.price,
+          next_tier:
+            row.next_quantity == null
+              ? null
+              : {
+                  quantity: Number(row.next_quantity),
+                  price: Number(row.next_price),
+                },
+        })
       : noCache({ error: "Produto indisponível." }, 404);
   }
   if (path === "portal/orders" && request.method === "POST") {

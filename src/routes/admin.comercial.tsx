@@ -1,3 +1,8 @@
+import {
+  groupPurchases,
+  PurchaseDeliveryForm,
+  PurchaseDeliveryHistory,
+} from "@/components/preciso/CommercialPurchases";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import {
@@ -28,7 +33,7 @@ import {
   CommercialIncomeStatement,
   CommercialOverview,
 } from "@/components/preciso/CommercialOverview";
-import { CommercialReportTools, PurchaseExamples } from "@/components/preciso/CommercialInsights";
+import { CommercialReportTools } from "@/components/preciso/CommercialInsights";
 import "@/components/preciso/commercial.css";
 
 export const Route = createFileRoute("/admin/comercial")({
@@ -194,6 +199,7 @@ function Commercial() {
     const data = new FormData(form);
     try {
       const response = await commercialFetch<{ user: Actor }>("auth/login", {
+        access: "management",
         email: String(data.get("email")),
         password: String(data.get("password")),
       });
@@ -327,6 +333,7 @@ function Commercial() {
               </button>
             ))}
             <ManagementLinks user={user} />
+            <InstallApp />
           </nav>
         </aside>
         <div className="company-content">
@@ -555,7 +562,7 @@ function Commercial() {
                         },
                         {
                           name: "profile",
-                          label: "Perfil (balcao, recorrente, atacado ou revendedor)",
+                          label: "Perfil (CNPJ, balcão, recorrente, atacado ou revendedor)",
                           nullable: true,
                         },
                         {
@@ -582,7 +589,8 @@ function Commercial() {
                     >
                       <p className="hint">
                         Condição individual tem prioridade sobre perfil. Depois, aplica-se a maior
-                        faixa de quantidade. Preços especiais ficam restritos à administração.
+                        faixa de quantidade. Use CNPJ para aplicar a faixa a clientes pessoa
+                        jurídica no site.
                       </p>
                     </CommandForm>
                     <div className="table-scroll">
@@ -792,76 +800,7 @@ function Commercial() {
               {tab === "Compras" && (
                 <>
                   <div className="grid">
-                    <CommandForm
-                      title="Registrar compra e entrada"
-                      kind="purchase"
-                      command={command}
-                      fields={[
-                        {
-                          name: "unit_id",
-                          label: "Produto e unidade comprada",
-                          type: "select",
-                          required: true,
-                          options: productUnits(state),
-                        },
-                        {
-                          name: "quantity",
-                          label: "Quantidade comprada",
-                          type: "number",
-                          required: true,
-                        },
-                        {
-                          name: "supplier_id",
-                          label: "Fornecedor",
-                          type: "select",
-                          nullable: true,
-                          options: state.suppliers.map((supplier) => ({
-                            value: supplier.id,
-                            label: supplier.name,
-                          })),
-                        },
-                        {
-                          name: "goods_total",
-                          label: "Valor total das mercadorias",
-                          type: "number",
-                          nullable: true,
-                        },
-                        {
-                          name: "freight",
-                          label: "Frete atribuído a este produto",
-                          type: "number",
-                          nullable: true,
-                        },
-                        {
-                          name: "other_costs",
-                          label: "Outros custos atribuídos",
-                          type: "number",
-                          nullable: true,
-                        },
-                        { name: "reference", label: "Nota ou referência do lote" },
-                        {
-                          name: "purchased_at",
-                          label: "Data da compra",
-                          type: "date",
-                          required: true,
-                          value: localDay(),
-                        },
-                        { name: "due_on", label: "Vencimento", type: "date", nullable: true },
-                        { name: "reason", label: "Observações da entrada", required: true },
-                      ]}
-                      extra={(data) => ({
-                        ...data,
-                        product_id: productForUnit(state, data.unit_id),
-                      })}
-                    >
-                      <p className="hint">
-                        Escolha o produto e informe a quantidade na unidade selecionada. Coloque o
-                        valor total da mercadoria e o frete em campos separados. Use zero para
-                        custos que não ocorreram. Se faltar um valor, o lote fica com custo
-                        pendente.
-                      </p>
-                      <PurchaseExamples products={state.products} />
-                    </CommandForm>
+                    <PurchaseDeliveryForm state={state} command={command} />
                     <CommandForm
                       title="Cadastrar fornecedor"
                       kind="supplier"
@@ -874,92 +813,106 @@ function Commercial() {
                   </div>
                   <section className="panel space">
                     <h2>Histórico de compras e custos</h2>
-                    {state.purchases.map((purchase) => (
-                      <details key={purchase.id}>
-                        <summary>
-                          {purchase.purchased_at} ·{" "}
-                          {
-                            state.products.find((product) => product.id === purchase.product_id)
-                              ?.name
-                          }{" "}
-                          · {moneyBR(purchase.total)}
-                        </summary>
-                        <p className="hint">
-                          Fornecedor{" "}
-                          {state.suppliers.find((supplier) => supplier.id === purchase.supplier_id)
-                            ?.name ?? "Não informado"}{" "}
-                          · {quantityBR(purchase.quantity)} na unidade-base · custo médio da entrada{" "}
-                          {purchase.total === null
-                            ? "pendente"
-                            : moneyBR(Number(purchase.total) / Number(purchase.quantity))}{" "}
-                          · pago {moneyBR(purchase.paid)}
-                        </p>
-                        <p className="hint">
-                          Material {moneyBR(purchase.goods_total)} · Frete{" "}
-                          {moneyBR(purchase.freight)} · Outros custos{" "}
-                          {moneyBR(purchase.other_costs)}
-                        </p>
-                        {purchase.total === null && (
-                          <CommandForm
-                            title="Completar custos da compra"
-                            kind="purchase_costs"
+                    {groupPurchases(state.purchases).map((items) => {
+                      const purchase = items[0];
+                      if (purchase.delivery_id)
+                        return (
+                          <PurchaseDeliveryHistory
+                            key={purchase.delivery_id}
+                            items={items}
+                            state={state}
                             command={command}
-                            fields={[
-                              {
-                                name: "goods_total",
-                                label: "Total das mercadorias",
-                                type: "number",
-                                required: true,
-                              },
-                              {
-                                name: "freight",
-                                label: "Frete atribuído",
-                                type: "number",
-                                required: true,
-                              },
-                              {
-                                name: "other_costs",
-                                label: "Outros custos",
-                                type: "number",
-                                required: true,
-                              },
-                              { name: "reason", label: "Motivo da atualização", required: true },
-                            ]}
-                            extra={(data) => ({ ...data, purchase_id: purchase.id })}
                           />
-                        )}
-                        {purchase.total !== null &&
-                          Number(purchase.paid) < Number(purchase.total) && (
+                        );
+                      return (
+                        <details key={purchase.id}>
+                          <summary>
+                            {purchase.purchased_at} ·{" "}
+                            {
+                              state.products.find((product) => product.id === purchase.product_id)
+                                ?.name
+                            }{" "}
+                            · {moneyBR(purchase.total)}
+                          </summary>
+                          <p className="hint">
+                            Fornecedor{" "}
+                            {state.suppliers.find(
+                              (supplier) => supplier.id === purchase.supplier_id,
+                            )?.name ?? "Não informado"}{" "}
+                            · {quantityBR(purchase.quantity)} na unidade-base · custo médio da
+                            entrada{" "}
+                            {purchase.total === null
+                              ? "pendente"
+                              : moneyBR(Number(purchase.total) / Number(purchase.quantity))}{" "}
+                            · pago {moneyBR(purchase.paid)}
+                          </p>
+                          <p className="hint">
+                            Material {moneyBR(purchase.goods_total)} · Frete{" "}
+                            {moneyBR(purchase.freight)} · Outros custos{" "}
+                            {moneyBR(purchase.other_costs)}
+                          </p>
+                          {purchase.total === null && (
                             <CommandForm
-                              title="Confirmar pagamento da compra"
-                              kind="purchase_payment"
+                              title="Completar custos da compra"
+                              kind="purchase_costs"
                               command={command}
                               fields={[
                                 {
-                                  name: "amount",
-                                  label: "Valor pago",
+                                  name: "goods_total",
+                                  label: "Total das mercadorias",
                                   type: "number",
                                   required: true,
                                 },
                                 {
-                                  name: "method",
-                                  label: "Forma",
-                                  type: "select",
+                                  name: "freight",
+                                  label: "Frete atribuído",
+                                  type: "number",
                                   required: true,
-                                  options: paymentOptions,
                                 },
                                 {
-                                  name: "confirmed",
-                                  label: "Confirmei o pagamento ao fornecedor",
-                                  type: "checkbox",
+                                  name: "other_costs",
+                                  label: "Outros custos",
+                                  type: "number",
                                   required: true,
                                 },
+                                { name: "reason", label: "Motivo da atualização", required: true },
                               ]}
                               extra={(data) => ({ ...data, purchase_id: purchase.id })}
                             />
                           )}
-                      </details>
-                    ))}
+                          {purchase.total !== null &&
+                            Number(purchase.paid) < Number(purchase.total) && (
+                              <CommandForm
+                                title="Confirmar pagamento da compra"
+                                kind="purchase_payment"
+                                command={command}
+                                fields={[
+                                  {
+                                    name: "amount",
+                                    label: "Valor pago",
+                                    type: "number",
+                                    required: true,
+                                  },
+                                  {
+                                    name: "method",
+                                    label: "Forma",
+                                    type: "select",
+                                    required: true,
+                                    options: paymentOptions,
+                                  },
+                                  {
+                                    name: "confirmed",
+                                    label: "Confirmei o pagamento ao fornecedor",
+                                    type: "checkbox",
+                                    required: true,
+                                  },
+                                ]}
+                                extra={(data) => ({ ...data, purchase_id: purchase.id })}
+                              />
+                            )}
+                        </details>
+                      );
+                    })}
                   </section>
                 </>
               )}
@@ -1137,3 +1090,4 @@ function Commercial() {
   );
 }
 import { LoadingSkeleton, PanelSkeleton } from "@/components/preciso/LoadingSkeleton";
+import { InstallApp } from "@/components/preciso/InstallApp";

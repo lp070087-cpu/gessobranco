@@ -123,6 +123,22 @@ const schemas = {
       due_on: date.nullable(),
     })
     .strict(),
+  purchase_delivery: z
+    .object({
+      ...key,
+      items: z
+        .array(z.object({ product_id: id, unit_id: id, quantity, goods_total: money }).strict())
+        .min(1)
+        .max(30),
+      supplier_id: optionalId,
+      reference: text,
+      reason: text,
+      freight: money,
+      other_costs: money,
+      purchased_at: date,
+      due_on: date.nullable(),
+    })
+    .strict(),
   adjustment: z
     .object({
       ...key,
@@ -192,6 +208,9 @@ const schemas = {
   purchase_payment: z
     .object({ ...key, purchase_id: id, amount, method, confirmed: z.literal(true) })
     .strict(),
+  purchase_delivery_payment: z
+    .object({ ...key, delivery_id: id, amount, method, confirmed: z.literal(true) })
+    .strict(),
   purchase_costs: z
     .object({
       ...key,
@@ -257,7 +276,7 @@ export async function publicCatalogue() {
   const result =
     await db.execute(sql`SELECT p.id,p.name,p.description,p.category,p.base_unit,p.image_url,
     s.balance>0 AS available,
-    (SELECT jsonb_agg(jsonb_build_object('name',u.name,'factor',u.factor,'price',CASE WHEN p.public_price THEN u.price ELSE NULL END) ORDER BY u.name)
+    (SELECT jsonb_agg(jsonb_build_object('id',u.id,'name',u.name,'factor',u.factor,'price',CASE WHEN p.public_price THEN u.price ELSE NULL END) ORDER BY u.name)
       FROM preciso.commercial_units u WHERE u.product_id=p.id) AS units
     FROM preciso.commercial_products p JOIN preciso.commercial_stock s ON s.id=p.id
     WHERE p.active AND p.published AND NOT p.example ORDER BY p.name`);
@@ -301,7 +320,7 @@ export async function commercialRequest(
       ) entry) AS recent_quotes,
       (SELECT count(*)::int FROM preciso.commercial_expenses WHERE paid_on IS NULL AND
         due_on < (now() AT TIME ZONE 'America/Recife')::date) AS overdue_expenses,
-      (SELECT count(*)::int FROM preciso.commercial_purchases WHERE total > paid AND
+      (SELECT count(DISTINCT coalesce(delivery_id,id))::int FROM preciso.commercial_purchases WHERE total > paid AND
         due_on < (now() AT TIME ZONE 'America/Recife')::date) AS overdue_purchases`);
     return json(result.rows[0]);
   }
@@ -321,12 +340,22 @@ export async function commercialRequest(
         (SELECT COALESCE(jsonb_agg(p),'[]') FROM preciso.commercial_payments p WHERE p.sale_id=r.id) AS payments
         FROM preciso.commercial_results r ORDER BY r.created_at DESC LIMIT 500) s),
       'movements',(SELECT COALESCE(jsonb_agg(m),'[]') FROM (SELECT * FROM preciso.commercial_movements ORDER BY created_at DESC LIMIT 500) m),
-      'purchases',(SELECT COALESCE(jsonb_agg(v ORDER BY v.purchased_at DESC),'[]') FROM (
-        SELECT p.*, o.payload->>'goods_total' goods_total,o.payload->>'freight' freight,o.payload->>'other_costs' other_costs
-        FROM (SELECT * FROM preciso.commercial_purchases ORDER BY purchased_at DESC,id LIMIT 500) p
+      'purchases',(SELECT COALESCE(jsonb_agg(v ORDER BY v.purchased_at DESC,coalesce(v.delivery_id,v.id),v.id),'[]') FROM (
+        SELECT p.*, o.payload->>'goods_total' goods_total,o.payload->>'freight' freight,o.payload->>'other_costs' other_costs,
+          o.payload->>'quantity' AS input_quantity, u.name AS unit_name
+        FROM preciso.commercial_purchases p
         LEFT JOIN LATERAL (SELECT payload FROM preciso.commercial_operations
           WHERE kind IN ('purchase','purchase_costs') AND result->>'id'=p.id::text
           ORDER BY (kind='purchase_costs') DESC LIMIT 1) o ON true
+        LEFT JOIN preciso.commercial_units u ON u.id=(o.payload->>'unit_id')::uuid
+        WHERE p.id IN (SELECT id FROM (
+          SELECT id,delivery_id FROM preciso.commercial_purchases
+          ORDER BY purchased_at DESC,coalesce(delivery_id,id),id LIMIT 500
+        ) recent WHERE delivery_id IS NULL)
+        OR p.delivery_id IN (SELECT delivery_id FROM (
+          SELECT id,delivery_id FROM preciso.commercial_purchases
+          ORDER BY purchased_at DESC,coalesce(delivery_id,id),id LIMIT 500
+        ) recent)
       ) v),
       'expenses',(SELECT COALESCE(jsonb_agg(e),'[]') FROM (SELECT * FROM preciso.commercial_expenses ORDER BY due_on DESC LIMIT 500) e),
       'purchase_payments',(SELECT COALESCE(jsonb_agg(v),'[]') FROM (SELECT * FROM preciso.commercial_purchase_payments ORDER BY created_at DESC LIMIT 500) v)
@@ -391,8 +420,12 @@ export async function commercialRequest(
   const kind = path.replace(/^commercial\//, "");
   const input = validateCommercialCommand(kind, await readBody());
   try {
+    const operation =
+      kind === "purchase_delivery" || kind === "purchase_delivery_payment"
+        ? sql`preciso.commercial_delivery_command`
+        : sql`preciso.commercial_command`;
     const result = await db.execute(
-      sql`SELECT preciso.commercial_command(${actor.id}::uuid,${kind},${JSON.stringify(input)}::jsonb) AS result`,
+      sql`SELECT ${operation}(${actor.id}::uuid,${kind},${JSON.stringify(input)}::jsonb) AS result`,
     );
     return json(result.rows[0]?.result);
   } catch (error) {

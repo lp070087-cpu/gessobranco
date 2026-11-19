@@ -1,13 +1,9 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { createFileRoute, Link, Navigate, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { CalendarDays, ClipboardList, Package, Settings } from "lucide-react";
-import {
-  AccountLayout,
-  hasManagementAccess,
-  managementHome,
-} from "@/components/preciso/AccountMenu";
+import { AccountLayout, hasManagementAccess } from "@/components/preciso/AccountMenu";
 import { CompanySession } from "@/components/preciso/CompanySession";
-import { commercialFetch, moneyBR } from "@/lib/commercial-client";
+import { commercialFetch, moneyBR, quantityBR } from "@/lib/commercial-client";
 import type { CompanyActor } from "@/lib/company-permissions";
 import { measuredArea } from "@/lib/estimate";
 
@@ -25,7 +21,12 @@ export const Route = createFileRoute("/minha-conta")({
   component: AccountRoute,
 });
 function AccountRoute() {
-  return <CompanySession title="Minha conta">{(user) => <Account user={user} />}</CompanySession>;
+  const { secao } = Route.useSearch();
+  return (
+    <CompanySession title="Minha conta" destination={secao === "materiais" ? secao : undefined}>
+      {(user) => <Account user={user} />}
+    </CompanySession>
+  );
 }
 type Material = {
   id: string;
@@ -100,7 +101,20 @@ function Account({ user }: { user: CompanyActor }) {
   const { secao } = Route.useSearch();
   const navigate = useNavigate({ from: "/minha-conta" });
   const showHistory = () => void navigate({ search: {} });
-  if (hasManagementAccess(user)) return <Navigate to={managementHome(user)} replace />;
+  if (hasManagementAccess(user))
+    return (
+      <section className="panel">
+        <h2>Área do cliente</h2>
+        <p className="hint">Entre com uma conta de cliente para consultar materiais e pedidos.</p>
+        <Link
+          to="/login"
+          search={secao === "materiais" ? { destino: secao } : {}}
+          className="action primary"
+        >
+          Entrar como cliente
+        </Link>
+      </section>
+    );
   return (
     <AccountLayout
       key={secao ?? "historico"}
@@ -201,6 +215,7 @@ function MaterialCard({ material, done }: { material: Material; done: () => void
     unit: string;
     quantity: number;
     price: string | number | null;
+    next_tier: { quantity: number; price: number } | null;
   } | null>(null);
   const [waiting, setWaiting] = useState(false),
     [error, setError] = useState("");
@@ -209,14 +224,13 @@ function MaterialCard({ material, done }: { material: Material; done: () => void
     if (!Number.isFinite(quantity) || quantity <= 0 || quantity > 1_000_000) return;
     const abort = new AbortController();
     const timeout = window.setTimeout(() => {
-      void commercialFetch<{ price: string | number | null }>(
-        "portal/price",
-        { unit_id: unit, quantity },
-        abort.signal,
-      )
+      void commercialFetch<{
+        price: string | number | null;
+        next_tier: { quantity: number; price: number } | null;
+      }>("portal/price", { unit_id: unit, quantity }, abort.signal)
         .then((value) => {
           if (!abort.signal.aborted) {
-            setPrice({ unit, quantity, price: value.price });
+            setPrice({ unit, quantity, ...value });
             setError("");
           }
         })
@@ -294,6 +308,23 @@ function MaterialCard({ material, done }: { material: Material; done: () => void
             ? "Preço sob consulta"
             : `Total estimado ${moneyBR(Number(current.price) * quantity)} · ${moneyBR(current.price)} por unidade`}
         </p>
+      )}
+      {current?.next_tier && (
+        <div className="notice" aria-live="polite">
+          <p>
+            Faltam {quantityBR(current.next_tier.quantity - quantity)} para chegar a{" "}
+            {quantityBR(current.next_tier.quantity)}{" "}
+            {material.units.find((item) => item.id === unit)?.name} e pagar{" "}
+            <strong>{moneyBR(current.next_tier.price)}</strong> por unidade.
+          </p>
+          <button
+            className="action"
+            type="button"
+            onClick={() => setQuantity(current.next_tier!.quantity)}
+          >
+            Aplicar próxima faixa
+          </button>
+        </div>
       )}
       <label className="space">
         Observações

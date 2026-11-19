@@ -156,6 +156,7 @@ export function WorkspaceShell({
             </Link>
           );
         })}
+        <InstallApp />
       </nav>
       <div className="p-3 border-t border-border space-y-0.5">
         <Link
@@ -270,3 +271,4 @@ export function StatCard({
   );
 }
 import { LoadingSkeleton } from "@/components/preciso/LoadingSkeleton";
+import { InstallApp } from "@/components/preciso/InstallApp";

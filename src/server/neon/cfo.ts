@@ -60,8 +60,9 @@ const json = (value: unknown, status = 200) =>
 const ledger = sql`
   SELECT 'sale:'||id::text AS key,(created_at AT TIME ZONE 'America/Sao_Paulo')::date AS day,round(amount*100)::bigint AS cents
     FROM preciso.commercial_payments WHERE method <> 'dinheiro'
-  UNION ALL SELECT 'purchase:'||id::text,(created_at AT TIME ZONE 'America/Sao_Paulo')::date,-round(amount*100)::bigint
-    FROM preciso.commercial_purchase_payments WHERE method <> 'dinheiro'
+  UNION ALL SELECT 'purchase:'||coalesce(delivery_payment_id,id)::text,
+    (created_at AT TIME ZONE 'America/Sao_Paulo')::date,-round(sum(amount)*100)::bigint
+    FROM preciso.commercial_purchase_payments WHERE method <> 'dinheiro' GROUP BY 1,2
   UNION ALL SELECT 'expense:'||id::text,paid_on,-round(amount*100)::bigint
     FROM preciso.commercial_expenses WHERE paid_on IS NOT NULL AND method <> 'dinheiro'
   UNION ALL SELECT 'service:'||id::text,(received_at AT TIME ZONE 'America/Sao_Paulo')::date,round(amount*100)::bigint
