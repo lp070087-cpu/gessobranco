@@ -1,6 +1,10 @@
 {
-  "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "tanstack-start",
-  "buildCommand": "npm run lint && npm run typecheck && npm test && npm run build",
-  "crons": [{ "path": "/api/neon/cron/cfo", "schedule": "0 12 5 * *" }]
+  "buildCommand": "node scripts/preview-format-validation.mjs && npm run lint && npm run typecheck && npm test && npm run build",
+  "crons": [
+    {
+      "path": "/api/neon/cron/cfo",
+      "schedule": "0 12 5 * *"
+    }
+  ]
 }
