@@ -14,6 +14,7 @@ import { Route as AppRouteImport } from './routes/_app'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as MinhaContaRouteImport } from './routes/minha-conta'
 import { Route as PlanosRouteImport } from './routes/planos'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as SignupRouteImport } from './routes/signup'
@@ -30,10 +31,12 @@ import { Route as AppServicesRouteImport } from './routes/_app.services'
 import { Route as AdminIndexRouteImport } from './routes/admin.index'
 import { Route as AdminAgendaRouteImport } from './routes/admin.agenda'
 import { Route as AdminAvaliacoesRouteImport } from './routes/admin.avaliacoes'
+import { Route as AdminCfoRouteImport } from './routes/admin.cfo'
 import { Route as AdminComercialRouteImport } from './routes/admin.comercial'
 import { Route as AdminConfiguracoesRouteImport } from './routes/admin.configuracoes'
 import { Route as AdminEmpresasRouteImport } from './routes/admin.empresas'
 import { Route as AdminFinanceiroRouteImport } from './routes/admin.financeiro'
+import { Route as AdminGestaoServicosRouteImport } from './routes/admin.gestao-servicos'
 import { Route as AdminNotificacoesRouteImport } from './routes/admin.notificacoes'
 import { Route as AdminObrasRouteImport } from './routes/admin.obras'
 import { Route as AdminOrcamentosRouteImport } from './routes/admin.orcamentos'
@@ -70,6 +73,11 @@ const ForgotPasswordRoute = ForgotPasswordRouteImport.update({
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MinhaContaRoute = MinhaContaRouteImport.update({
+  id: '/minha-conta',
+  path: '/minha-conta',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PlanosRoute = PlanosRouteImport.update({
@@ -152,6 +160,11 @@ const AdminAvaliacoesRoute = AdminAvaliacoesRouteImport.update({
   path: '/avaliacoes',
   getParentRoute: () => AdminRoute,
 } as any)
+const AdminCfoRoute = AdminCfoRouteImport.update({
+  id: '/cfo',
+  path: '/cfo',
+  getParentRoute: () => AdminRoute,
+} as any)
 const AdminComercialRoute = AdminComercialRouteImport.update({
   id: '/comercial',
   path: '/comercial',
@@ -170,6 +183,11 @@ const AdminEmpresasRoute = AdminEmpresasRouteImport.update({
 const AdminFinanceiroRoute = AdminFinanceiroRouteImport.update({
   id: '/financeiro',
   path: '/financeiro',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminGestaoServicosRoute = AdminGestaoServicosRouteImport.update({
+  id: '/gestao-servicos',
+  path: '/gestao-servicos',
   getParentRoute: () => AdminRoute,
 } as any)
 const AdminNotificacoesRoute = AdminNotificacoesRouteImport.update({
@@ -243,6 +261,7 @@ export interface FileRoutesByFullPath {
   '/admin': typeof AdminRouteWithChildren
   '/forgot-password': typeof ForgotPasswordRoute
   '/login': typeof LoginRoute
+  '/minha-conta': typeof MinhaContaRoute
   '/planos': typeof PlanosRoute
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
@@ -258,10 +277,12 @@ export interface FileRoutesByFullPath {
   '/services': typeof AppServicesRouteWithChildren
   '/admin/agenda': typeof AdminAgendaRoute
   '/admin/avaliacoes': typeof AdminAvaliacoesRoute
+  '/admin/cfo': typeof AdminCfoRoute
   '/admin/comercial': typeof AdminComercialRoute
   '/admin/configuracoes': typeof AdminConfiguracoesRoute
   '/admin/empresas': typeof AdminEmpresasRoute
   '/admin/financeiro': typeof AdminFinanceiroRoute
+  '/admin/gestao-servicos': typeof AdminGestaoServicosRoute
   '/admin/notificacoes': typeof AdminNotificacoesRoute
   '/admin/obras': typeof AdminObrasRoute
   '/admin/orcamentos': typeof AdminOrcamentosRoute
@@ -281,6 +302,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/login': typeof LoginRoute
+  '/minha-conta': typeof MinhaContaRoute
   '/planos': typeof PlanosRoute
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
@@ -295,10 +317,12 @@ export interface FileRoutesByTo {
   '/services': typeof AppServicesRouteWithChildren
   '/admin/agenda': typeof AdminAgendaRoute
   '/admin/avaliacoes': typeof AdminAvaliacoesRoute
+  '/admin/cfo': typeof AdminCfoRoute
   '/admin/comercial': typeof AdminComercialRoute
   '/admin/configuracoes': typeof AdminConfiguracoesRoute
   '/admin/empresas': typeof AdminEmpresasRoute
   '/admin/financeiro': typeof AdminFinanceiroRoute
+  '/admin/gestao-servicos': typeof AdminGestaoServicosRoute
   '/admin/notificacoes': typeof AdminNotificacoesRoute
   '/admin/obras': typeof AdminObrasRoute
   '/admin/orcamentos': typeof AdminOrcamentosRoute
@@ -321,6 +345,7 @@ export interface FileRoutesById {
   '/admin': typeof AdminRouteWithChildren
   '/forgot-password': typeof ForgotPasswordRoute
   '/login': typeof LoginRoute
+  '/minha-conta': typeof MinhaContaRoute
   '/planos': typeof PlanosRoute
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
@@ -336,10 +361,12 @@ export interface FileRoutesById {
   '/_app/services': typeof AppServicesRouteWithChildren
   '/admin/agenda': typeof AdminAgendaRoute
   '/admin/avaliacoes': typeof AdminAvaliacoesRoute
+  '/admin/cfo': typeof AdminCfoRoute
   '/admin/comercial': typeof AdminComercialRoute
   '/admin/configuracoes': typeof AdminConfiguracoesRoute
   '/admin/empresas': typeof AdminEmpresasRoute
   '/admin/financeiro': typeof AdminFinanceiroRoute
+  '/admin/gestao-servicos': typeof AdminGestaoServicosRoute
   '/admin/notificacoes': typeof AdminNotificacoesRoute
   '/admin/obras': typeof AdminObrasRoute
   '/admin/orcamentos': typeof AdminOrcamentosRoute
@@ -362,6 +389,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/forgot-password'
     | '/login'
+    | '/minha-conta'
     | '/planos'
     | '/reset-password'
     | '/signup'
@@ -377,10 +405,12 @@ export interface FileRouteTypes {
     | '/services'
     | '/admin/agenda'
     | '/admin/avaliacoes'
+    | '/admin/cfo'
     | '/admin/comercial'
     | '/admin/configuracoes'
     | '/admin/empresas'
     | '/admin/financeiro'
+    | '/admin/gestao-servicos'
     | '/admin/notificacoes'
     | '/admin/obras'
     | '/admin/orcamentos'
@@ -400,6 +430,7 @@ export interface FileRouteTypes {
     | '/'
     | '/forgot-password'
     | '/login'
+    | '/minha-conta'
     | '/planos'
     | '/reset-password'
     | '/signup'
@@ -414,10 +445,12 @@ export interface FileRouteTypes {
     | '/services'
     | '/admin/agenda'
     | '/admin/avaliacoes'
+    | '/admin/cfo'
     | '/admin/comercial'
     | '/admin/configuracoes'
     | '/admin/empresas'
     | '/admin/financeiro'
+    | '/admin/gestao-servicos'
     | '/admin/notificacoes'
     | '/admin/obras'
     | '/admin/orcamentos'
@@ -439,6 +472,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/forgot-password'
     | '/login'
+    | '/minha-conta'
     | '/planos'
     | '/reset-password'
     | '/signup'
@@ -454,10 +488,12 @@ export interface FileRouteTypes {
     | '/_app/services'
     | '/admin/agenda'
     | '/admin/avaliacoes'
+    | '/admin/cfo'
     | '/admin/comercial'
     | '/admin/configuracoes'
     | '/admin/empresas'
     | '/admin/financeiro'
+    | '/admin/gestao-servicos'
     | '/admin/notificacoes'
     | '/admin/obras'
     | '/admin/orcamentos'
@@ -480,6 +516,7 @@ export interface RootRouteChildren {
   AdminRoute: typeof AdminRouteWithChildren
   ForgotPasswordRoute: typeof ForgotPasswordRoute
   LoginRoute: typeof LoginRoute
+  MinhaContaRoute: typeof MinhaContaRoute
   PlanosRoute: typeof PlanosRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   SignupRoute: typeof SignupRoute
@@ -523,6 +560,13 @@ declare module '@tanstack/react-router' {
       path: '/login'
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/minha-conta': {
+      id: '/minha-conta'
+      path: '/minha-conta'
+      fullPath: '/minha-conta'
+      preLoaderRoute: typeof MinhaContaRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/planos': {
@@ -637,6 +681,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminAvaliacoesRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/admin/cfo': {
+      id: '/admin/cfo'
+      path: '/cfo'
+      fullPath: '/admin/cfo'
+      preLoaderRoute: typeof AdminCfoRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/admin/comercial': {
       id: '/admin/comercial'
       path: '/comercial'
@@ -663,6 +714,13 @@ declare module '@tanstack/react-router' {
       path: '/financeiro'
       fullPath: '/admin/financeiro'
       preLoaderRoute: typeof AdminFinanceiroRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/gestao-servicos': {
+      id: '/admin/gestao-servicos'
+      path: '/gestao-servicos'
+      fullPath: '/admin/gestao-servicos'
+      preLoaderRoute: typeof AdminGestaoServicosRouteImport
       parentRoute: typeof AdminRoute
     }
     '/admin/notificacoes': {
@@ -798,10 +856,12 @@ const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
 interface AdminRouteChildren {
   AdminAgendaRoute: typeof AdminAgendaRoute
   AdminAvaliacoesRoute: typeof AdminAvaliacoesRoute
+  AdminCfoRoute: typeof AdminCfoRoute
   AdminComercialRoute: typeof AdminComercialRoute
   AdminConfiguracoesRoute: typeof AdminConfiguracoesRoute
   AdminEmpresasRoute: typeof AdminEmpresasRoute
   AdminFinanceiroRoute: typeof AdminFinanceiroRoute
+  AdminGestaoServicosRoute: typeof AdminGestaoServicosRoute
   AdminNotificacoesRoute: typeof AdminNotificacoesRoute
   AdminObrasRoute: typeof AdminObrasRoute
   AdminOrcamentosRoute: typeof AdminOrcamentosRoute
@@ -813,10 +873,12 @@ interface AdminRouteChildren {
 const AdminRouteChildren: AdminRouteChildren = {
   AdminAgendaRoute: AdminAgendaRoute,
   AdminAvaliacoesRoute: AdminAvaliacoesRoute,
+  AdminCfoRoute: AdminCfoRoute,
   AdminComercialRoute: AdminComercialRoute,
   AdminConfiguracoesRoute: AdminConfiguracoesRoute,
   AdminEmpresasRoute: AdminEmpresasRoute,
   AdminFinanceiroRoute: AdminFinanceiroRoute,
+  AdminGestaoServicosRoute: AdminGestaoServicosRoute,
   AdminNotificacoesRoute: AdminNotificacoesRoute,
   AdminObrasRoute: AdminObrasRoute,
   AdminOrcamentosRoute: AdminOrcamentosRoute,
@@ -855,6 +917,7 @@ const rootRouteChildren: RootRouteChildren = {
   AdminRoute: AdminRouteWithChildren,
   ForgotPasswordRoute: ForgotPasswordRoute,
   LoginRoute: LoginRoute,
+  MinhaContaRoute: MinhaContaRoute,
   PlanosRoute: PlanosRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   SignupRoute: SignupRoute,

@@ -129,7 +129,7 @@ function Index() {
             ))}
           </nav>
           <div className="editorial-nav-actions">
-            <Link to="/login" className="editorial-client-link">
+            <Link to="/minha-conta" className="editorial-client-link">
               Área do cliente <ArrowUpRight size={15} aria-hidden="true" />
             </Link>
             <button
@@ -154,7 +154,7 @@ function Index() {
                 <ArrowUpRight size={18} aria-hidden="true" />
               </a>
             ))}
-            <Link to="/login" onClick={closeMenu}>
+            <Link to="/minha-conta" onClick={closeMenu}>
               Área do cliente <ArrowUpRight size={18} aria-hidden="true" />
             </Link>
           </nav>
@@ -381,7 +381,7 @@ function Index() {
                   considera as condições do ambiente e o escopo da obra.
                 </p>
               </div>
-              <Link to="/login" className="editorial-text-link">
+              <Link to="/minha-conta" className="editorial-text-link">
                 Já tem um projeto? Acesse sua conta <ArrowUpRight size={17} aria-hidden="true" />
               </Link>
             </div>
@@ -422,7 +422,7 @@ function Index() {
           </div>
           <div className="editorial-footer-bottom">
             <span>© {new Date().getFullYear()} OURO BRANCO</span>
-            <Link to="/login">Área do cliente</Link>
+            <Link to="/minha-conta">Área do cliente</Link>
             <a href="#top">Voltar ao início ↑</a>
           </div>
         </div>

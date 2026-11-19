@@ -82,6 +82,9 @@ function HomePage() {
             Tudo pronto para o próximo passo do seu projeto.
           </p>
         </div>
+        <Link to="/minha-conta" className="gold-button">
+          Comprar materiais
+        </Link>
         <Link to="/calcular" className="gold-button">
           <Plus className="size-4" />
           Novo orçamento

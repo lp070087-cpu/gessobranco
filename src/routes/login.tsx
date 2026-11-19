@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { AuthShell } from "@/components/preciso/AuthShell";
 import { cn } from "@/lib/utils";
+import { commercialFetch } from "@/lib/commercial-client";
 
 export const Route = createFileRoute("/login")({
   head: () => ({
@@ -52,23 +53,41 @@ function LoginPage() {
     }
 
     setLoading(true);
-    const { error } = await supabase.auth.signInWithPassword({
-      email: parsed.data.email,
-      password: parsed.data.password,
-    });
-    setLoading(false);
-
-    if (error) {
-      setPassword("");
-      setErrors({ password: "Senha incorreta, tente novamente." });
-      setShake(true);
-      setTimeout(() => setShake(false), 500);
-      toast.error("Falha ao entrar", { description: "Verifique suas credenciais." });
-      return;
+    try {
+      const { user } = await commercialFetch<{ user: { role: string } }>("auth/login", {
+        ...parsed.data,
+        keep_connected: keepConnected,
+      });
+      toast.success("Bem-vindo de volta.");
+      navigate({ to: user.role === "admin" ? "/admin/comercial" : "/minha-conta", replace: true });
+    } catch (failure) {
+      try {
+        const status = (failure as { status?: number }).status;
+        if (status !== 400 && status !== 401) throw failure;
+        const legacy = await supabase.auth.signInWithPassword(parsed.data);
+        if (legacy.error || !legacy.data.session) throw failure;
+        try {
+          await commercialFetch("auth/legacy-session", {
+            access_token: legacy.data.session.access_token,
+          });
+          navigate({ to: "/minha-conta", replace: true });
+        } catch {
+          navigate({ to: "/home", replace: true });
+        }
+      } catch {
+        setPassword("");
+        setErrors({
+          password:
+            failure instanceof Error && (failure as { status?: number }).status === 429
+              ? failure.message
+              : "Não foi possível entrar. Confira o e-mail e a senha.",
+        });
+        setShake(true);
+        setTimeout(() => setShake(false), 500);
+      }
+    } finally {
+      setLoading(false);
     }
-
-    toast.success("Bem-vindo de volta.");
-    navigate({ to: "/home", replace: true });
   };
 
   return (

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import {
   commercialFetch,
   localDay,
@@ -19,6 +19,7 @@ import {
 } from "@/components/preciso/CommercialForms";
 import { CommercialSales } from "@/components/preciso/CommercialSales";
 import { CommercialImport } from "@/components/preciso/CommercialImport";
+import { CompanyAccess } from "@/components/preciso/CompanyAccess";
 import { CompanyRequests } from "@/components/preciso/CompanyRequests";
 import { SalesQualityChart } from "@/components/preciso/SalesQualityChart";
 import {
@@ -29,7 +30,7 @@ import { CommercialReportTools, PurchaseExamples } from "@/components/preciso/Co
 import "@/components/preciso/commercial.css";
 
 export const Route = createFileRoute("/admin/comercial")({
-  head: () => ({ meta: [{ title: "Gestão da Empresa — Ouro Branco" }] }),
+  head: () => ({ meta: [{ title: "Gestão da Loja — Ouro Branco" }] }),
   component: Commercial,
 });
 type Actor = { id: string; full_name: string; role: string };
@@ -47,9 +48,10 @@ const tabs = [
   "Financeiro",
   "Importar",
 ] as const;
-type Tab = (typeof tabs)[number] | "Orçamentos de serviço";
+type Tab = (typeof tabs)[number];
 
 function Commercial() {
+  const navigate = useNavigate();
   const [user, setUser] = useState<Actor | null>(null);
   const [state, setState] = useState<CommercialState | null>(null);
   const [report, setReport] = useState<Report | null>(null);
@@ -207,7 +209,7 @@ function Commercial() {
   if (loading)
     return (
       <main className="commercial">
-        <p role="status">Carregando gestão da empresa…</p>
+        <p role="status">Carregando gestão da loja…</p>
       </main>
     );
   if (!user)
@@ -218,7 +220,7 @@ function Commercial() {
           <Link to="/">Ver site</Link>
         </header>
         <form onSubmit={signIn} className="panel" style={{ maxWidth: 480, margin: "40px auto" }}>
-          <h2>Entrar na gestão da empresa</h2>
+          <h2>Entrar na gestão da loja</h2>
           <p className="hint">
             Acesse com a conta administrativa cadastrada para a gestão comercial.
           </p>
@@ -247,7 +249,7 @@ function Commercial() {
       <header className="commercial-header">
         <div>
           <h1>OURO BRANCO</h1>
-          <small>Gestão da Empresa · {user.full_name}</small>
+          <small>Gestão da Loja · {user.full_name}</small>
         </div>
         <div className="actions">
           <Link to="/" className="action">
@@ -308,9 +310,9 @@ function Commercial() {
           <nav
             id="company-nav"
             className={mobileMenu ? "is-open" : undefined}
-            aria-label="Gestão da Empresa"
+            aria-label="Gestão da Loja"
           >
-            {([...tabs, "Orçamentos de serviço"] as const).map((item) => (
+            {tabs.map((item) => (
               <button
                 key={item}
                 aria-current={tab === item ? "page" : undefined}
@@ -323,11 +325,17 @@ function Commercial() {
                 {item}
               </button>
             ))}
+            <Link to="/admin/gestao-servicos" className="action primary">
+              Ir para Gestão de Serviços
+            </Link>
+            <Link to="/admin/cfo" className="action">
+              CFO financeiro
+            </Link>
           </nav>
         </aside>
         <div className="company-content">
-          {tab === "Orçamentos de serviço" || tab === "Pedidos de material" ? (
-            <CompanyRequests kind={tab === "Orçamentos de serviço" ? "service" : "material"} />
+          {tab === "Pedidos de material" ? (
+            <CompanyRequests kind="material" />
           ) : !state ? (
             <button
               className="action"
@@ -351,7 +359,7 @@ function Commercial() {
                     setEditing("new");
                   }}
                   openMaterials={() => setTab("Pedidos de material")}
-                  openQuotes={() => setTab("Orçamentos de serviço")}
+                  openQuotes={() => void navigate({ to: "/admin/gestao-servicos" })}
                   openFinance={() => setTab("Financeiro")}
                 />
               )}
@@ -455,6 +463,11 @@ function Commercial() {
                         usam as datas indicadas em cada informação.
                       </div>
                       <CommercialIncomeStatement report={report} />
+                      <div className="actions">
+                        <Link to="/admin/cfo" className="action">
+                          Abrir CFO financeiro
+                        </Link>
+                      </div>
                       <SalesQualityChart period={reportPeriod} report={report} />
                     </>
                   )}
@@ -1110,6 +1123,7 @@ function Commercial() {
                 </section>
               )}
 
+              {tab === "Clientes" && <CompanyAccess customers={state.customers} />}
               {tab === "Importar" && <CommercialImport command={command} state={state} />}
             </fieldset>
           )}

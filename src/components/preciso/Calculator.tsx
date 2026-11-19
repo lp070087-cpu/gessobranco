@@ -3,6 +3,7 @@ import { AlertCircle, ArrowRight, Building2, Ruler } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { ScheduleDialog } from "./ScheduleDialog";
 import { estimateProject, measuredArea } from "@/lib/estimate";
+import { commercialFetch } from "@/lib/commercial-client";
 
 type PriceService = {
   id: string;
@@ -28,6 +29,31 @@ export function Calculator() {
     let mounted = true;
     void (async () => {
       try {
+        const local = await commercialFetch<
+          {
+            id: string;
+            name: string;
+            shortName: string;
+            pricePerM2: string;
+            billingUnit: string;
+            available: boolean;
+          }[]
+        >("services").catch(() => null);
+        if (!mounted) return;
+        if (local && (local.length > 0 || !import.meta.env.VITE_SUPABASE_URL)) {
+          const next: PriceService[] = local
+            .filter((item) => item.available)
+            .map((item) => ({
+              id: item.id,
+              name: item.name,
+              short_name: item.shortName,
+              price_per_m2: Number(item.pricePerM2),
+              billing_unit: item.billingUnit,
+            }));
+          setServices(next);
+          setServiceId(next[0]?.id ?? "");
+          return;
+        }
         const { data, error } = await supabase
           .from("services")
           .select("*")

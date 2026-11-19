@@ -37,7 +37,11 @@ const inputSchema = z
       });
   });
 
-export async function createCompanyRequest(db: Database, value: unknown) {
+export async function createCompanyRequest(
+  db: Database,
+  value: unknown,
+  owner?: { id: string; email: string; full_name: string },
+) {
   const input = inputSchema.parse(value);
   const product = input.product_id
     ? (
@@ -51,19 +55,23 @@ export async function createCompanyRequest(db: Database, value: unknown) {
       { code: "custom", path: ["product_id"], message: "Produto ou unidade indisponível." },
     ]);
   await db.execute(sql`INSERT INTO preciso.company_requests
-    (request_key,kind,name,email,phone,subject,product_id,unit_name,quantity,notes)
-    VALUES (${input.request_key}::uuid,${input.kind},${input.name},${input.email},${input.phone},
+    (request_key,kind,name,email,phone,subject,product_id,unit_name,quantity,notes,user_id)
+    VALUES (${input.request_key}::uuid,${input.kind},${owner?.full_name ?? input.name},${owner?.email ?? input.email},${input.phone},
       ${product ? String(product.name) : input.subject},${input.product_id ?? null}::uuid,
-      ${input.unit_name ?? null},${input.quantity ?? null},${input.notes})
+      ${input.unit_name ?? null},${input.quantity ?? null},${input.notes},${owner?.id ?? null}::uuid)
     ON CONFLICT(request_key) DO NOTHING`);
   return { ok: true };
 }
 
-export async function companyRequests(db: Database) {
+export async function companyRequests(db: Database, kind: "material" | "service" | null = null) {
   const inbound = await db.execute(sql`SELECT id,kind,name,email,phone,subject,unit_name,quantity,
-    notes,status,created_at FROM preciso.company_requests ORDER BY created_at DESC LIMIT 200`);
-  const quotes = await db.execute(sql`SELECT q.id,q.title,q.status,q.total,q.notes,q.created_at,
+    notes,status,created_at,quoted_unit_price FROM preciso.company_requests
+    WHERE ${kind}::text IS NULL OR kind=${kind}::text ORDER BY created_at DESC LIMIT 200`);
+  const quotes =
+    kind === "material"
+      ? null
+      : await db.execute(sql`SELECT q.id,q.title,q.status,q.total,q.notes,q.created_at,
     u.full_name AS name,u.email FROM preciso.quotes q LEFT JOIN preciso.users u ON u.id=q.user_id
     ORDER BY q.created_at DESC LIMIT 200`);
-  return { requests: inbound.rows, quotes: quotes.rows };
+  return { requests: inbound.rows, quotes: quotes?.rows ?? [] };
 }

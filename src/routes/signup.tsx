@@ -3,13 +3,13 @@ import { useState } from "react";
 import { Eye, EyeOff, Loader2, User2, Building2 } from "lucide-react";
 import { z } from "zod";
 import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { AuthShell } from "@/components/preciso/AuthShell";
 import { cn } from "@/lib/utils";
+import { commercialFetch } from "@/lib/commercial-client";
 
 export const Route = createFileRoute("/signup")({
   head: () => ({
@@ -29,7 +29,7 @@ type AccountType = "cliente" | "empresa";
 const baseShape = {
   email: z.string().trim().email("E-mail inválido").max(255),
   phone: z.string().trim().min(8, "Telefone inválido").max(20),
-  password: z.string().min(6, "Mínimo 6 caracteres").max(128),
+  password: z.string().min(12, "Mínimo 12 caracteres").max(128),
   confirmPassword: z.string(),
   acceptTerms: z.literal(true, { errorMap: () => ({ message: "Você precisa aceitar os termos" }) }),
 };
@@ -93,38 +93,31 @@ function SignupPage() {
     }
 
     setLoading(true);
-    const meta =
-      accountType === "cliente"
-        ? {
-            account_type: "cliente",
-            full_name: form.fullName,
-            phone: form.phone,
-          }
-        : {
-            account_type: "empresa",
-            company_name: form.companyName,
-            responsible_name: form.responsibleName,
-            full_name: form.responsibleName,
-            phone: form.phone,
-            cnpj: form.cnpj || null,
-          };
-
-    const { error } = await supabase.auth.signUp({
-      email: form.email,
-      password: form.password,
-      options: {
-        emailRedirectTo: `${window.location.origin}/`,
-        data: meta,
-      },
-    });
-    setLoading(false);
-
-    if (error) {
-      toast.error("Não foi possível criar a conta", { description: error.message });
-      return;
+    try {
+      await commercialFetch("auth/register", {
+        email: form.email.trim(),
+        password: form.password,
+        phone: form.phone,
+        full_name: accountType === "cliente" ? form.fullName : form.responsibleName,
+        accepted_terms: form.acceptTerms,
+        ...(accountType === "empresa"
+          ? { company_name: form.companyName, document: form.cnpj }
+          : {}),
+      });
+      toast.success("Conta criada com sucesso.");
+      try {
+        await commercialFetch("auth/login", { email: form.email.trim(), password: form.password });
+        navigate({ to: "/minha-conta", replace: true });
+      } catch {
+        navigate({ to: "/login", replace: true });
+      }
+    } catch (failure) {
+      toast.error("Não foi possível criar a conta", {
+        description: failure instanceof Error ? failure.message : undefined,
+      });
+    } finally {
+      setLoading(false);
     }
-    toast.success("Conta criada com sucesso.");
-    navigate({ to: "/home", replace: true });
   };
 
   return (

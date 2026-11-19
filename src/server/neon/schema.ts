@@ -1,5 +1,6 @@
 import {
   boolean,
+  date,
   integer,
   jsonb,
   numeric,
@@ -72,6 +73,8 @@ export const projects = preciso.table("projects", {
   status: text("status").notNull().default("planned"),
   progress: integer("progress").notNull().default(0),
   responsibleId: uuid("responsible_id"),
+  startsOn: date("starts_on"),
+  endsOn: date("ends_on"),
 });
 export const platformSettings = preciso.table("platform_settings", {
   key: text("key").primaryKey(),

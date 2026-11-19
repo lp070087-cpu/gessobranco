@@ -11,6 +11,7 @@ test("real HTTP handlers enforce sessions, admin roles, input validation and ori
   const db = new PGlite();
   const previousUrl = process.env.DATABASE_URL;
   const previousApp = process.env.APP_URL;
+  const previousCron = process.env.CRON_SECRET;
   try {
     await db.exec(await readFile(new URL("../drizzle/0000_preciso.sql", import.meta.url), "utf8"));
     await db.exec(
@@ -19,11 +20,20 @@ test("real HTTP handlers enforce sessions, admin roles, input validation and ori
     await db.exec(
       await readFile(new URL("../drizzle/0002_company_requests.sql", import.meta.url), "utf8"),
     );
+    for (const migration of ["0003_company_operations", "0004_cfo"])
+      await db.exec(
+        await readFile(new URL(`../drizzle/${migration}.sql`, import.meta.url), "utf8"),
+      );
     globalThis.__ouroTestDatabase = drizzle(db);
     process.env.DATABASE_URL = "postgres://isolated-test.invalid/test";
     process.env.APP_URL = "http://ouro.test";
     const bundled = await build({
-      entryPoints: ["src/server/neon/api.ts"],
+      stdin: {
+        contents:
+          "export {handleNeonRequest} from './src/server/neon/api'; export {parseStatement} from './src/lib/cfo'; export {parseCsv} from './src/lib/commercial-import';",
+        resolveDir: process.cwd(),
+        loader: "ts",
+      },
       bundle: true,
       platform: "node",
       format: "esm",
@@ -44,7 +54,7 @@ test("real HTTP handlers enforce sessions, admin roles, input validation and ori
         },
       ],
     });
-    const { handleNeonRequest } = await import(
+    const { handleNeonRequest, parseStatement, parseCsv } = await import(
       `data:text/javascript;base64,${Buffer.from(bundled.outputFiles[0].text).toString("base64")}`
     );
     const request = (
@@ -239,6 +249,259 @@ test("real HTTP handlers enforce sessions, admin roles, input validation and ori
     );
     const reclassified = await (await request(qualityRange, token)).json();
     assert.deepEqual(reclassified.points[1], { day: "2026-11-18", good: 40, medium: null, bad: 5 });
+    const staffEmail = "secretaria@example.invalid";
+    const staffPassword = "Senha-teste-12345";
+    assert.equal(
+      (
+        await request("auth/register", null, {
+          email: staffEmail,
+          password: staffPassword,
+          full_name: "Secretaria teste",
+        })
+      ).status,
+      201,
+    );
+    const staffLogin = await request("auth/login", null, {
+      email: staffEmail,
+      password: staffPassword,
+    });
+    const staffToken = staffLogin.headers.get("set-cookie").match(/preciso_session=([a-f0-9]+)/)[1];
+    assert.equal((await request("cfo/history", staffToken)).status, 403);
+    assert.equal((await request("admin/services", staffToken)).status, 403);
+    assert.equal(
+      (
+        await request("admin/permissions", token, {
+          email: staffEmail,
+          permissions: ["service_requests", "service_agenda"],
+        })
+      ).status,
+      200,
+    );
+    assert.equal((await request("commercial/state", staffToken)).status, 403);
+    assert.equal((await request("cfo/history", staffToken)).status, 403);
+    const staffInbox = await (await request("admin/company-requests", staffToken)).json();
+    assert.ok(staffInbox.requests.every((item) => item.kind === "service"));
+    const material = inbox.requests.find((item) => item.kind === "material");
+    assert.equal(
+      (
+        await request(
+          "admin/company-requests",
+          staffToken,
+          { id: material.id, status: "closed" },
+          undefined,
+          "PATCH",
+        )
+      ).status,
+      404,
+    );
+    assert.equal(
+      (
+        await request("commercial/product", token, {
+          request_key: randomUUID(),
+          name: "Gesso de teste portal",
+          description: "",
+          category: "",
+          base_unit: "kg",
+          valuation_method: "fifo",
+          minimum_stock: 0,
+          minimum_margin: 0,
+          maximum_discount: 100,
+          enforce_discount: false,
+          active: true,
+          published: true,
+          public_price: true,
+          image_url: null,
+          units: [{ name: "Saco", factor: 40, price: 25 }],
+        })
+      ).status,
+      200,
+    );
+    const materials = await (await request("portal/catalogue", staffToken)).json();
+    const sack = materials.find((item) => item.name === "Gesso de teste portal").units[0];
+    assert.equal(
+      Number(
+        (
+          await (
+            await request("portal/price", staffToken, { unit_id: sack.id, quantity: 3 })
+          ).json()
+        ).price,
+      ),
+      25,
+    );
+    const order = { request_key: randomUUID(), unit_id: sack.id, quantity: 3, notes: "Teste" };
+    const placed = await request("portal/orders", staffToken, order);
+    assert.equal(placed.status, 201);
+    assert.deepEqual(
+      await (await request("portal/orders", staffToken, order)).json(),
+      await placed.json(),
+    );
+    assert.equal((await (await request("portal/orders", staffToken)).json()).length, 1);
+    assert.equal((await (await request("portal/orders", token)).json()).length, 0);
+    assert.equal(
+      (
+        await request("portal/service-request", staffToken, {
+          kind: "service",
+          subject: "Gesso para ambiente",
+          notes: "2 m por 4 m",
+          phone: "",
+          request_key: randomUUID(),
+        })
+      ).status,
+      201,
+    );
+    const createdService = await (
+      await request("services", token, {
+        key: "forro-teste",
+        name: "Forro teste",
+        price_per_m2: 30,
+        billing_unit: "m2",
+        is_active: true,
+      })
+    ).json();
+    assert.ok(createdService.id);
+    const quotePayload = {
+      title: "Orçamento da sala",
+      project_type: "residencial",
+      request_key: randomUUID(),
+      items: [{ service_id: createdService.id, environment: "Sala", quantity: 8 }],
+    };
+    const placedQuote = await request("quotes", staffToken, quotePayload);
+    assert.equal(placedQuote.status, 201);
+    const quote = await placedQuote.json();
+    assert.equal(Number(quote.total), 240);
+    assert.equal((await (await request("quotes", staffToken, quotePayload)).json()).id, quote.id);
+    assert.equal(
+      (await request(`quotes/${quote.id}`, staffToken, { status: "approved" }, undefined, "PATCH"))
+        .status,
+      200,
+    );
+    assert.equal((await request("projects", staffToken, { quote_id: quote.id })).status, 403);
+    assert.equal((await request("projects", token, { quote_id: quote.id })).status, 201);
+    const visit = await request("appointments", staffToken, {
+      kind: "visit",
+      scheduled_at: "2099-01-05T09:00:00-03:00",
+      address: "Endereço de teste",
+      notes: "",
+    });
+    assert.equal(visit.status, 201);
+    assert.equal(
+      (
+        await request(
+          `appointments/${(await visit.json()).id}`,
+          staffToken,
+          { status: "confirmed" },
+          undefined,
+          "PATCH",
+        )
+      ).status,
+      200,
+    );
+
+    // October has one R$ 100 sale and payment. Bank extras must only enter the report once reviewed.
+    const fiscalSale = (
+      await db.query(
+        "INSERT INTO preciso.commercial_sales(actor_id,freight,fees,taxes,other_costs,created_at) VALUES ($1,15,0,0,0,'2026-10-15T15:00:00Z') RETURNING id",
+        [actor],
+      )
+    ).rows[0];
+    await db.query(
+      "INSERT INTO preciso.commercial_sale_items(sale_id,product_id,unit_id,product_name,unit_name,factor,quantity,price,list_price,revenue) VALUES ($1,$2,$3,'Teste','kg',1,1,100,100,100)",
+      [fiscalSale.id, unit.product_id, unit.id],
+    );
+    const cash = (await db.query("SELECT id FROM preciso.commercial_cash_sessions LIMIT 1"))
+      .rows[0];
+    await db.query(
+      "INSERT INTO preciso.commercial_payments(sale_id,cash_id,method,amount,reference,actor_id,created_at) VALUES ($1,$2,'pix',100,'Teste',$3,'2026-10-15T17:00:00Z')",
+      [fiscalSale.id, cash.id, actor],
+    );
+    const statement =
+      "Data;Descrição;Valor;ID\n15/10/2026;Venda Pix;100,00;mov-1\n15/10/2026;Recebimento externo;30,00;mov-2\n15/10/2026;Despesa externa;-20,00;mov-3\n15/10/2026;Taxa;-5,00;mov-4";
+    const parsed = parseStatement(parseCsv(statement), {
+      date: 0,
+      description: 1,
+      value: 2,
+      reference: 3,
+    });
+    assert.deepEqual(parsed.errors, []);
+    assert.deepEqual(
+      parsed.entries.map((item) => item.cents),
+      [10000, 3000, -2000, -500],
+    );
+    const cfoPayload = {
+      file: "extrato.csv",
+      account: "Banco teste",
+      authorized: true,
+      entries: parsed.entries,
+    };
+    const importResult = await request("cfo/import", token, cfoPayload);
+    assert.equal(importResult.status, 201);
+    assert.equal((await importResult.json()).inserted, 4);
+    assert.equal((await (await request("cfo/import", token, cfoPayload)).json()).duplicates, 4);
+    const rangeCfo = { start: "2026-10-01", end: "2026-10-31", request_key: randomUUID() };
+    const runResponse = await request("cfo/run", token, rangeCfo);
+    assert.equal(runResponse.status, 200);
+    const first = await runResponse.json();
+    assert.equal(first.report.bank.matched, 1);
+    assert.equal(first.report.bank.review, 3);
+    assert.equal(first.report.cash.net, 100);
+    assert.equal(first.report.dre.result, 85);
+    for (const movement of first.report.bank.queue) {
+      const classification =
+        movement.amount_cents > 0
+          ? "external_revenue"
+          : movement.amount_cents === -500
+            ? "external_fee"
+            : "external_expense";
+      assert.equal(
+        (
+          await request(
+            "cfo/review",
+            token,
+            { id: movement.id, classification, reason: "Validação isolada" },
+            undefined,
+            "PATCH",
+          )
+        ).status,
+        200,
+      );
+    }
+    assert.equal((await (await request("cfo/run", token, rangeCfo)).json()).id, first.id);
+    const recalculated = await (
+      await request("cfo/run", token, { ...rangeCfo, request_key: randomUUID() })
+    ).json();
+    assert.equal(recalculated.report.bank.review, 0);
+    assert.equal(recalculated.report.dre.revenue, 130);
+    assert.equal(recalculated.report.dre.result, 90);
+    assert.deepEqual(recalculated.report.cash, { received: 130, paid: 25, net: 105 });
+    assert.equal((await request(`cfo/history/${recalculated.id}`, token)).status, 200);
+    process.env.CRON_SECRET = "segredo-de-teste-do-cfo-123456";
+    const cron = (secret, now) =>
+      handleNeonRequest(
+        new Request("http://ouro.test/api/neon/cron/cfo", {
+          headers: { Authorization: "Bearer " + secret },
+        }),
+        new Date(now),
+      );
+    assert.equal((await cron("incorreto", "2026-11-05T12:00:00Z")).status, 401);
+    assert.equal(
+      (await (await cron(process.env.CRON_SECRET, "2026-11-05T01:00:00Z")).json()).status,
+      "outside_schedule",
+    );
+    const scheduled = await (await cron(process.env.CRON_SECRET, "2026-11-05T12:00:00Z")).json();
+    assert.equal(scheduled.status, "succeeded");
+    assert.deepEqual(scheduled.report.cash, recalculated.report.cash);
+    const repeated = await (await cron(process.env.CRON_SECRET, "2026-11-05T12:10:00Z")).json();
+    assert.equal(repeated.id, scheduled.id);
+    assert.equal(repeated.reused, true);
+    const retryRange = { ...rangeCfo, request_key: randomUUID() };
+    await db.exec("ALTER TABLE preciso.cfo_entries RENAME TO cfo_entries_unavailable");
+    const failed = await request("cfo/run", token, retryRange);
+    assert.equal(failed.status, 500);
+    const failedRun = await failed.json();
+    await db.exec("ALTER TABLE preciso.cfo_entries_unavailable RENAME TO cfo_entries");
+    const retried = await (await request("cfo/run", token, retryRange)).json();
+    assert.equal(retried.id, failedRun.id);
+    assert.equal(retried.status, "succeeded");
     await db.exec("UPDATE preciso.users SET disabled=true WHERE email='client@example.invalid'");
     assert.equal((await request("commercial/state", token)).status, 401);
     delete process.env.DATABASE_URL;
@@ -248,6 +511,8 @@ test("real HTTP handlers enforce sessions, admin roles, input validation and ori
     else process.env.DATABASE_URL = previousUrl;
     if (previousApp === undefined) delete process.env.APP_URL;
     else process.env.APP_URL = previousApp;
+    if (previousCron === undefined) delete process.env.CRON_SECRET;
+    else process.env.CRON_SECRET = previousCron;
     delete globalThis.__ouroTestDatabase;
     await db.close();
   }
