@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import { z } from "zod";
 import { database } from "./db";
 import { reportDownload } from "./report-download";
+import { salesQuality, saveSalesQuality } from "./sales-quality";
 import type { Report } from "@/lib/commercial-client";
 
 const quantity = z
@@ -270,7 +271,40 @@ export async function commercialRequest(
   readBody: () => Promise<unknown>,
 ) {
   if (actor.role !== "admin") return json({ error: "Acesso restrito à administração." }, 403);
+  if (path === "commercial/quality") {
+    if (request.method === "POST") return json(await saveSalesQuality(actor.id, await readBody()));
+    if (request.method !== "GET") return json({ error: "Operação indisponível." }, 405);
+    const chart = await salesQuality(new URL(request.url));
+    return chart ? json(chart) : json({ error: "Confira o período do gráfico." }, 400);
+  }
   const db = database();
+  if (path === "commercial/overview" && request.method === "GET") {
+    const url = new URL(request.url);
+    const start = date.parse(url.searchParams.get("start"));
+    const end = date.parse(url.searchParams.get("end"));
+    if (end < start) return json({ error: "Confira o período da Visão Geral." }, 400);
+    const result = await db.execute(sql`WITH requests AS (
+      SELECT id,subject,status,kind,created_at FROM preciso.company_requests
+      UNION ALL
+      SELECT id,title,status,'service',created_at FROM preciso.quotes
+    )
+    SELECT
+      (SELECT count(*) FROM requests WHERE kind='material' AND
+        (created_at AT TIME ZONE 'America/Recife')::date BETWEEN ${start}::date AND ${end}::date)::int AS materials,
+      (SELECT count(*) FROM requests WHERE kind='service' AND
+        (created_at AT TIME ZONE 'America/Recife')::date BETWEEN ${start}::date AND ${end}::date)::int AS quotes,
+      (SELECT COALESCE(jsonb_agg(entry ORDER BY entry.created_at DESC,entry.id),'[]') FROM (
+        SELECT id,subject,status,created_at FROM requests WHERE kind='material' ORDER BY created_at DESC,id LIMIT 4
+      ) entry) AS recent_materials,
+      (SELECT COALESCE(jsonb_agg(entry ORDER BY entry.created_at DESC,entry.id),'[]') FROM (
+        SELECT id,subject,status,created_at FROM requests WHERE kind='service' ORDER BY created_at DESC,id LIMIT 4
+      ) entry) AS recent_quotes,
+      (SELECT count(*)::int FROM preciso.commercial_expenses WHERE paid_on IS NULL AND
+        due_on < (now() AT TIME ZONE 'America/Recife')::date) AS overdue_expenses,
+      (SELECT count(*)::int FROM preciso.commercial_purchases WHERE total > paid AND
+        due_on < (now() AT TIME ZONE 'America/Recife')::date) AS overdue_purchases`);
+    return json(result.rows[0]);
+  }
   if (path === "commercial/state" && request.method === "GET") {
     const result = await db.execute(sql`SELECT jsonb_build_object(
       'products',(SELECT COALESCE(jsonb_agg(v ORDER BY v.name),'[]') FROM (SELECT p.*,s.balance,s.stock_cost,

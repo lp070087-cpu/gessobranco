@@ -79,6 +79,7 @@ test("real HTTP handlers enforce sessions, admin roles, input validation and ori
     assert.match(login.headers.get("set-cookie"), /HttpOnly; SameSite=Strict/);
     const token = login.headers.get("set-cookie").match(/preciso_session=([a-f0-9]+)/)[1];
     assert.equal((await request("commercial/state", token)).status, 403);
+    assert.equal((await request("commercial/quality", token, { good: 15, medium: 5 })).status, 403);
     assert.equal((await request("admin/company-requests", token)).status, 403);
     assert.equal(
       (await request("commercial/cash_open", token, { request_key: randomUUID(), opening: 0 }))
@@ -158,6 +159,15 @@ test("real HTTP handlers enforce sessions, admin roles, input validation and ori
     );
     const updated = await (await request("admin/company-requests", token)).json();
     assert.equal(updated.requests.find((entry) => entry.id === service.id).status, "contacted");
+    await db.exec("UPDATE preciso.company_requests SET created_at='2026-11-18T15:00:00Z'");
+    const overviewPath = "commercial/overview?start=2026-11-18&end=2026-11-18";
+    assert.equal((await request(overviewPath)).status, 401);
+    const overview = await (await request(overviewPath, token)).json();
+    assert.equal(overview.materials, 1);
+    assert.equal(overview.quotes, 1);
+    assert.equal(overview.recent_materials[0].subject, "Gesso");
+    assert.equal(overview.recent_quotes[0].subject, "Forro de gesso");
+    assert.equal(overview.overdue_expenses, 0);
     const range = "commercial/report?start=2026-11-17&end=2026-11-18";
     const report = await (await request(range, token)).json();
     assert.deepEqual(
@@ -182,6 +192,53 @@ test("real HTTP handlers enforce sessions, admin roles, input validation and ori
     assert.match(excel.headers.get("content-type"), /spreadsheetml/);
     const cells = await readSheet(Buffer.from(await excel.arrayBuffer()), 1);
     assert.equal(cells[0][0], "Ouro Branco — Relatório comercial");
+    const qualityRange = range.replace("commercial/report", "commercial/quality");
+    const emptyChart = await (await request(qualityRange, token)).json();
+    assert.deepEqual(emptyChart.thresholds, { good: 15, medium: 5 });
+    assert.equal(emptyChart.sales, 0);
+    assert.deepEqual(emptyChart.points[0], {
+      day: "2026-11-17",
+      good: null,
+      medium: null,
+      bad: null,
+    });
+    const actor = (
+      await db.query("SELECT id FROM preciso.users WHERE email=$1", [credentials.email])
+    ).rows[0].id;
+    const unit = (await db.query("SELECT id,product_id FROM preciso.commercial_units LIMIT 1"))
+      .rows[0];
+    for (const [freight, status] of [
+      [60, "confirmed"],
+      [90, "confirmed"],
+      [105, "confirmed"],
+      [null, "confirmed"],
+      [0, "cancelled"],
+    ]) {
+      const sale = (
+        await db.query(
+          "INSERT INTO preciso.commercial_sales(actor_id,freight,fees,taxes,other_costs,status,created_at) VALUES ($1,$2,0,0,0,$3,'2026-11-18T15:00:00Z') RETURNING id",
+          [actor, freight, status],
+        )
+      ).rows[0];
+      await db.query(
+        "INSERT INTO preciso.commercial_sale_items(sale_id,product_id,unit_id,product_name,unit_name,factor,quantity,price,list_price,revenue) VALUES ($1,$2,$3,'Produto teste','Unidade',1,1,100,100,100)",
+        [sale.id, unit.product_id, unit.id],
+      );
+    }
+    const chart = await (await request(qualityRange, token)).json();
+    assert.equal(chart.sales, 3);
+    assert.equal(chart.pending, 1);
+    assert.deepEqual(chart.points[1], { day: "2026-11-18", good: 40, medium: 10, bad: -5 });
+    assert.equal(
+      (await request("commercial/quality", token, { good: 10, medium: 15 })).status,
+      400,
+    );
+    assert.equal(
+      (await request("commercial/quality", token, { good: 35, medium: 12 })).status,
+      200,
+    );
+    const reclassified = await (await request(qualityRange, token)).json();
+    assert.deepEqual(reclassified.points[1], { day: "2026-11-18", good: 40, medium: null, bad: 5 });
     await db.exec("UPDATE preciso.users SET disabled=true WHERE email='client@example.invalid'");
     assert.equal((await request("commercial/state", token)).status, 401);
     delete process.env.DATABASE_URL;

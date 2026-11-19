@@ -1,5 +1,5 @@
 import { crc32 } from "node:zlib";
-import { moneyBR, type Report } from "@/lib/commercial-client";
+import { estimatedResult, moneyBR, type Report } from "@/lib/commercial-client";
 
 type Cell = string | number | null;
 type Row = Cell[];
@@ -13,6 +13,7 @@ function reportRows(report: Report, start: string, end: string): Row[] {
     ["Benefício das vendas após custos atribuídos", report.contribution],
     ["Custo dos produtos vendidos", report.goods_cost],
     ["Despesas operacionais", report.operating_expenses],
+    ["Resultado estimado", estimatedResult(report)],
     ["Saídas de caixa", report.cash_out],
     ["Saldo a receber (todas as vendas)", report.receivable],
     ["Contas a pagar (saldo total)", report.payable],

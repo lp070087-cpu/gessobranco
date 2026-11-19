@@ -1,68 +1,6 @@
-import {
-  CartesianGrid,
-  Line,
-  LineChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
 import { localDay, type Product, type Report } from "@/lib/commercial-client";
 
 type Period = { start: string; end: string };
-const levels = [
-  { key: "good", label: "Bom", color: "var(--foreground)" },
-  { key: "medium", label: "Médio", color: "var(--accent)" },
-  { key: "bad", label: "Ruim", color: "var(--destructive)" },
-] as const;
-
-export function SalesQualityChart({ report }: { report: Report }) {
-  const days = report.daily ?? [];
-  const pending = days.reduce((total, day) => total + Number(day.pending), 0);
-  return (
-    <section className="panel space" aria-label="Resultado das vendas por dia">
-      <h2>Resultado das vendas por dia</h2>
-      <p className="hint">
-        Bom: contribuição positiva. Médio: contribuição zero. Ruim: contribuição negativa.{" "}
-        {pending > 0 && `${pending} venda(s) com custo pendente ficaram fora das linhas.`}
-      </p>
-      <div className="actions" aria-label="Legenda">
-        <span className="quality-good">● Bom</span>
-        <span className="quality-medium">● Médio</span>
-        <span className="quality-bad">● Ruim</span>
-      </div>
-      {days.some((day) => day.good || day.medium || day.bad) ? (
-        <div className="quality-chart">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={days} margin={{ left: 0, right: 12, top: 12, bottom: 5 }}>
-              <CartesianGrid stroke="var(--border)" vertical={false} />
-              <XAxis
-                dataKey="day"
-                minTickGap={22}
-                tickFormatter={(date: string) => date.slice(5).split("-").reverse().join("/")}
-              />
-              <YAxis allowDecimals={false} width={32} />
-              <Tooltip />
-              {levels.map((level) => (
-                <Line
-                  key={level.key}
-                  dataKey={level.key}
-                  name={level.label}
-                  stroke={level.color}
-                  strokeWidth={2}
-                  dot={days.length <= 7}
-                  isAnimationActive={false}
-                />
-              ))}
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-      ) : (
-        <p className="hint">Ainda não há vendas com custo completo neste período.</p>
-      )}
-    </section>
-  );
-}
 
 export function CommercialReportTools({
   report,

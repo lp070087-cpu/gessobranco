@@ -160,6 +160,11 @@ export type Report = {
   by_product: { product_name: string; revenue: number; goods_cost: number | null }[];
 };
 
+export function estimatedResult(report: Report) {
+  if (Number(report.partial_sales) > 0) return null;
+  return Number(report.contribution ?? 0) - Number(report.operating_expenses);
+}
+
 export const moneyBR = (value: string | number | null | undefined) =>
   value == null
     ? "Custo pendente"

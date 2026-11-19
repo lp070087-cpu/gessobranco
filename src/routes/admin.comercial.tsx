@@ -20,11 +20,12 @@ import {
 import { CommercialSales } from "@/components/preciso/CommercialSales";
 import { CommercialImport } from "@/components/preciso/CommercialImport";
 import { CompanyRequests } from "@/components/preciso/CompanyRequests";
+import { SalesQualityChart } from "@/components/preciso/SalesQualityChart";
 import {
-  CommercialReportTools,
-  SalesQualityChart,
-  PurchaseExamples,
-} from "@/components/preciso/CommercialInsights";
+  CommercialIncomeStatement,
+  CommercialOverview,
+} from "@/components/preciso/CommercialOverview";
+import { CommercialReportTools, PurchaseExamples } from "@/components/preciso/CommercialInsights";
 import "@/components/preciso/commercial.css";
 
 export const Route = createFileRoute("/admin/comercial")({
@@ -33,8 +34,9 @@ export const Route = createFileRoute("/admin/comercial")({
 });
 type Actor = { id: string; full_name: string; role: string };
 type Pending = { actor: string; kind: string; body: Record<string, unknown> };
+const monthStart = () => localDay().slice(0, 7) + "-01";
 const tabs = [
-  "Hoje",
+  "Visão Geral",
   "Pedidos de material",
   "Vender",
   "Produtos",
@@ -51,15 +53,15 @@ function Commercial() {
   const [user, setUser] = useState<Actor | null>(null);
   const [state, setState] = useState<CommercialState | null>(null);
   const [report, setReport] = useState<Report | null>(null);
-  const [tab, setTab] = useState<Tab>("Hoje");
+  const [tab, setTab] = useState<Tab>("Visão Geral");
   const [mobileMenu, setMobileMenu] = useState(false);
-  const [reportPeriod, setReportPeriod] = useState({ start: localDay(), end: localDay() });
+  const [reportPeriod, setReportPeriod] = useState({ start: monthStart(), end: localDay() });
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [pending, setPending] = useState<Pending | null>(null);
-  const [start, setStart] = useState(localDay);
+  const [start, setStart] = useState(monthStart);
   const [end, setEnd] = useState(localDay);
   const locked = useRef(false);
   const pendingOperation = useRef<Pending | null>(null);
@@ -338,7 +340,22 @@ function Commercial() {
             </button>
           ) : (
             <fieldset disabled={busy} style={{ minWidth: 0 }}>
-              {(tab === "Hoje" || tab === "Financeiro") && (
+              {tab === "Visão Geral" && (
+                <CommercialOverview
+                  state={state}
+                  report={report}
+                  period={reportPeriod}
+                  sell={() => setTab("Vender")}
+                  createProduct={() => {
+                    setTab("Produtos");
+                    setEditing("new");
+                  }}
+                  openMaterials={() => setTab("Pedidos de material")}
+                  openQuotes={() => setTab("Orçamentos de serviço")}
+                  openFinance={() => setTab("Financeiro")}
+                />
+              )}
+              {tab === "Financeiro" && (
                 <>
                   <form
                     className="actions"
@@ -437,33 +454,9 @@ function Commercial() {
                         {moneyBR(report.refund_due)}. Resultado econômico e movimentações de caixa
                         usam as datas indicadas em cada informação.
                       </div>
+                      <CommercialIncomeStatement report={report} />
+                      <SalesQualityChart period={reportPeriod} report={report} />
                     </>
-                  )}
-                  {tab === "Hoje" && (
-                    <section className="panel">
-                      <h2>Produtos para repor</h2>
-                      {state.products
-                        .filter(
-                          (product) =>
-                            product.active &&
-                            Number(product.balance) <= Number(product.minimum_stock),
-                        )
-                        .map((product) => (
-                          <p key={product.id}>
-                            {product.name} · {quantityBR(product.balance)} {product.base_unit}
-                          </p>
-                        ))}
-                      {!state.products.some(
-                        (product) =>
-                          product.active &&
-                          Number(product.balance) <= Number(product.minimum_stock),
-                      ) && (
-                        <p className="hint">Nenhum produto ativo está abaixo do estoque mínimo.</p>
-                      )}
-                      <button className="action space" onClick={() => setTab("Vender")}>
-                        Começar uma venda
-                      </button>
-                    </section>
                   )}
                 </>
               )}
@@ -1116,7 +1109,7 @@ function Commercial() {
                   </p>
                 </section>
               )}
-              {tab === "Hoje" && report && <SalesQualityChart report={report} />}
+
               {tab === "Importar" && <CommercialImport command={command} state={state} />}
             </fieldset>
           )}
