@@ -21,6 +21,8 @@ import { CommercialSales } from "@/components/preciso/CommercialSales";
 import { CommercialImport } from "@/components/preciso/CommercialImport";
 import { CompanyAccess } from "@/components/preciso/CompanyAccess";
 import { CompanyRequests } from "@/components/preciso/CompanyRequests";
+import { ManagementLinks } from "@/components/preciso/AccountMenu";
+import type { CompanyActor } from "@/lib/company-permissions";
 import { SalesQualityChart } from "@/components/preciso/SalesQualityChart";
 import {
   CommercialIncomeStatement,
@@ -30,10 +32,12 @@ import { CommercialReportTools, PurchaseExamples } from "@/components/preciso/Co
 import "@/components/preciso/commercial.css";
 
 export const Route = createFileRoute("/admin/comercial")({
+  validateSearch: (search: Record<string, unknown>): { secao?: "clientes" } =>
+    search.secao === "clientes" ? { secao: "clientes" } : {},
   head: () => ({ meta: [{ title: "Gestão da Loja — Ouro Branco" }] }),
   component: Commercial,
 });
-type Actor = { id: string; full_name: string; role: string };
+type Actor = CompanyActor;
 type Pending = { actor: string; kind: string; body: Record<string, unknown> };
 const monthStart = () => localDay().slice(0, 7) + "-01";
 const tabs = [
@@ -55,7 +59,8 @@ function Commercial() {
   const [user, setUser] = useState<Actor | null>(null);
   const [state, setState] = useState<CommercialState | null>(null);
   const [report, setReport] = useState<Report | null>(null);
-  const [tab, setTab] = useState<Tab>("Visão Geral");
+  const requestedCustomers = Route.useSearch().secao === "clientes";
+  const [tab, setTab] = useState<Tab>(requestedCustomers ? "Clientes" : "Visão Geral");
   const [mobileMenu, setMobileMenu] = useState(false);
   const [reportPeriod, setReportPeriod] = useState({ start: monthStart(), end: localDay() });
   const [error, setError] = useState("");
@@ -220,10 +225,8 @@ function Commercial() {
           <Link to="/">Ver site</Link>
         </header>
         <form onSubmit={signIn} className="panel" style={{ maxWidth: 480, margin: "40px auto" }}>
-          <h2>Entrar na gestão da loja</h2>
-          <p className="hint">
-            Acesse com a conta administrativa cadastrada para a gestão comercial.
-          </p>
+          <h2>Login da gestão da loja e da empresa</h2>
+          <p className="hint">Use o mesmo e-mail e senha para acessar a loja e os serviços.</p>
           {error && (
             <p role="alert" className="notice error">
               {error}
@@ -240,6 +243,9 @@ function Commercial() {
           <button disabled={busy} className="action primary">
             {busy ? "Entrando…" : "Entrar"}
           </button>
+          <Link to="/login" className="action">
+            Login do cliente
+          </Link>
         </form>
       </main>
     );
@@ -325,12 +331,7 @@ function Commercial() {
                 {item}
               </button>
             ))}
-            <Link to="/admin/gestao-servicos" className="action primary">
-              Ir para Gestão de Serviços
-            </Link>
-            <Link to="/admin/cfo" className="action">
-              CFO financeiro
-            </Link>
+            <ManagementLinks user={user} />
           </nav>
         </aside>
         <div className="company-content">

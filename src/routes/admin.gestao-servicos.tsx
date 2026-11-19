@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
+import { AccountLayout, ManagementLinks } from "@/components/preciso/AccountMenu";
 import { CompanySession } from "@/components/preciso/CompanySession";
 import { CompanyRequests } from "@/components/preciso/CompanyRequests";
 import { SERVICES } from "@/components/preciso/services";
@@ -19,6 +20,8 @@ const sections = [
 const canEnter = (user: CompanyActor) =>
   sections.some(([, permission]) => hasCompanyPermission(user, permission));
 export const Route = createFileRoute("/admin/gestao-servicos")({
+  validateSearch: (search: Record<string, unknown>): { secao?: "catalogo" } =>
+    search.secao === "catalogo" ? { secao: "catalogo" } : {},
   head: () => ({ meta: [{ title: "Gestão de Serviços — Ouro Branco" }] }),
   component: () => (
     <CompanySession title="Gestão de Serviços" allowed={canEnter}>
@@ -29,61 +32,40 @@ export const Route = createFileRoute("/admin/gestao-servicos")({
 
 function ServiceArea({ user }: { user: CompanyActor }) {
   const visible = sections.filter(([, permission]) => hasCompanyPermission(user, permission));
-  const [selected, setSelected] = useState<CompanyPermission>(visible[0][1]);
-  const [mobile, setMobile] = useState(false);
+  const requestedCatalogue = Route.useSearch().secao === "catalogo";
+  const [selected, setSelected] = useState<CompanyPermission>(
+    requestedCatalogue && hasCompanyPermission(user, "service_catalogue")
+      ? "service_catalogue"
+      : visible[0][1],
+  );
   return (
-    <div className="company-layout">
-      <aside className="company-menu">
-        <button
-          type="button"
-          className="action company-menu-toggle"
-          aria-expanded={mobile}
-          aria-controls="service-menu"
-          onClick={() => setMobile(!mobile)}
-        >
-          Menu de serviços
-        </button>
-        <nav
-          id="service-menu"
-          className={mobile ? "is-open" : undefined}
-          aria-label="Gestão de Serviços"
-        >
+    <AccountLayout
+      label="Menu de serviços"
+      menu={
+        <>
           {visible.map(([label, permission]) => (
             <button
               key={permission}
               aria-current={selected === permission ? "page" : undefined}
-              onClick={() => {
-                setSelected(permission);
-                setMobile(false);
-              }}
+              onClick={() => setSelected(permission)}
             >
               {label}
             </button>
           ))}
-          {user.role === "admin" && (
-            <Link to="/admin/comercial" className="action">
-              Ir para Gestão da Loja
-            </Link>
-          )}
-          {hasCompanyPermission(user, "finance_cfo") && (
-            <Link to="/admin/cfo" className="action">
-              CFO financeiro
-            </Link>
-          )}
-        </nav>
-      </aside>
-      <div className="company-content">
-        {selected === "service_requests" && (
-          <CompanyRequests
-            kind="service"
-            canStartProject={hasCompanyPermission(user, "service_projects")}
-          />
-        )}
-        {selected === "service_catalogue" && <Catalogue />}
-        {selected === "service_agenda" && <Agenda />}
-        {selected === "service_projects" && <Projects />}
-      </div>
-    </div>
+          <ManagementLinks user={user} />
+        </>
+      }
+    >
+      {selected === "service_requests" && (
+        <CompanyRequests
+          kind="service"
+          canStartProject={hasCompanyPermission(user, "service_projects")}
+        />
+      )}
+      {selected === "service_catalogue" && <Catalogue />}
+      {selected === "service_agenda" && <Agenda />}
+      {selected === "service_projects" && <Projects />}
+    </AccountLayout>
   );
 }
 

@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
+import { AccountLayout, ManagementLinks } from "@/components/preciso/AccountMenu";
 import { CompanySession } from "@/components/preciso/CompanySession";
 import { hasCompanyPermission } from "@/lib/company-permissions";
-import { commercialFetch, moneyBR } from "@/lib/commercial-client";
+import { commercialFetch, localDay, moneyBR } from "@/lib/commercial-client";
+import type { CompanyActor } from "@/lib/company-permissions";
 import {
   normalizeStatementText,
   parseStatement,
-  priorMonth,
   reviewTypes,
   suggestClassification,
 } from "@/lib/cfo";
@@ -20,7 +21,7 @@ export const Route = createFileRoute("/admin/cfo")({
       title="CFO financeiro"
       allowed={(user) => hasCompanyPermission(user, "finance_cfo")}
     >
-      {(user) => <Cfo canStore={user.role === "admin"} />}
+      {(user) => <Cfo user={user} />}
     </CompanySession>
   ),
 });
@@ -71,8 +72,16 @@ const stamp = (stamp: string) =>
   new Date(stamp).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
 const statuses = { running: "Em processamento", succeeded: "Concluído", failed: "Falhou" };
 
-function Cfo({ canStore }: { canStore: boolean }) {
-  const [range, setRange] = useState(priorMonth);
+const cfoSections = ["Visão geral", "Importar extrato", "Histórico"] as const;
+
+function Cfo({ user }: { user: CompanyActor }) {
+  const [section, setSection] = useState<(typeof cfoSections)[number]>("Visão geral");
+  const [range, setRange] = useState(() => {
+    const end = localDay();
+    return { start: end.slice(0, 7) + "-01", end };
+  });
+  const [live, setLive] = useState<{ start: string; end: string; snapshot: Snapshot } | null>(null);
+  const [liveError, setLiveError] = useState("");
   const [history, setHistory] = useState<History | null>(null);
   const [selected, setSelected] = useState<Run | null>(null);
   const [revision, setRevision] = useState(0);
@@ -83,6 +92,21 @@ function Cfo({ canStore }: { canStore: boolean }) {
   const request = useRef<{ period: string; key: string } | null>(null);
   const running = useRef(false);
   const refresh = () => setRevision((value) => value + 1);
+  const { start, end } = range;
+  useEffect(() => {
+    if (section !== "Visão geral" || !start || !end || start > end) return;
+    const controller = new AbortController();
+    const query = new URLSearchParams({ start, end });
+    setLiveError("");
+    void commercialFetch<Snapshot>("cfo/overview?" + query, undefined, controller.signal)
+      .then((snapshot) => {
+        if (!controller.signal.aborted) setLive({ start, end, snapshot });
+      })
+      .catch((failure: Error) => {
+        if (!controller.signal.aborted) setLiveError(failure.message);
+      });
+    return () => controller.abort();
+  }, [start, end, revision, section]);
   useEffect(() => {
     const controller = new AbortController();
     void commercialFetch<History>("cfo/history", undefined, controller.signal)
@@ -145,24 +169,33 @@ function Cfo({ canStore }: { canStore: boolean }) {
     setError("");
     try {
       setSelected(await commercialFetch<Run>("cfo/history/" + id));
+      setSection("Visão geral");
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : "Relatório indisponível.");
     }
   }
   const latest = history?.runs[0];
-  const report = selected ?? history?.runs.find((run) => run.report) ?? null;
+  const snapshot = live?.start === start && live.end === end ? live.snapshot : null;
+  const report = selected?.report;
   return (
-    <>
-      <div className="actions">
-        {canStore && (
-          <Link className="action" to="/admin/comercial">
-            Voltar para Gestão da Loja
-          </Link>
-        )}
-        <button className="action" onClick={refresh}>
-          Atualizar histórico
-        </button>
-      </div>
+    <AccountLayout
+      label="Menu do CFO"
+      menu={
+        <>
+          {cfoSections.map((item) => (
+            <button
+              key={item}
+              type="button"
+              aria-current={section === item ? "page" : undefined}
+              onClick={() => setSection(item)}
+            >
+              {item}
+            </button>
+          ))}
+          <ManagementLinks user={user} />
+        </>
+      }
+    >
       {error && (
         <p className="notice error" role="alert">
           {error}
@@ -173,88 +206,129 @@ function Cfo({ canStore }: { canStore: boolean }) {
           {message}
         </p>
       )}
-      <div className="grid">
-        <section className="panel">
-          <h2>Executar análise</h2>
-          <p className="hint">
-            O fechamento automático analisa o mês anterior no dia 5, na faixa das 9h no horário de
-            Brasília.
-          </p>
-          <form className="space" onSubmit={(event) => void execute(event)}>
-            <fieldset disabled={busy}>
-              <div className="fields">
+      {section === "Visão geral" && (
+        <>
+          <section className="panel">
+            <h2>Visão financeira da Loja e dos Serviços</h2>
+            <p className="hint">
+              O fechamento automático analisa o mês anterior no dia 5, na faixa das 9h no horário de
+              Brasília.
+            </p>
+            <form className="space" onSubmit={(event) => void execute(event)}>
+              <fieldset disabled={busy}>
+                <div className="fields">
+                  <label>
+                    De
+                    <input
+                      type="date"
+                      required
+                      value={range.start}
+                      onChange={(e) => {
+                        setSelected(null);
+                        setRange({ ...range, start: e.target.value });
+                      }}
+                    />
+                  </label>
+                  <label>
+                    Até
+                    <input
+                      type="date"
+                      required
+                      value={range.end}
+                      onChange={(e) => {
+                        setSelected(null);
+                        setRange({ ...range, end: e.target.value });
+                      }}
+                    />
+                  </label>
+                </div>
                 <label>
-                  De
+                  Comando
                   <input
-                    type="date"
+                    value={instruction}
+                    onChange={(e) => setInstruction(e.target.value)}
                     required
-                    value={range.start}
-                    onChange={(e) => setRange({ ...range, start: e.target.value })}
                   />
                 </label>
-                <label>
-                  Até
-                  <input
-                    type="date"
-                    required
-                    value={range.end}
-                    onChange={(e) => setRange({ ...range, end: e.target.value })}
-                  />
-                </label>
-              </div>
-              <label>
-                Comando
-                <input
-                  value={instruction}
-                  onChange={(e) => setInstruction(e.target.value)}
-                  required
-                />
-              </label>
-              <button className="action primary">{busy ? "Processando…" : "Executar /CFO"}</button>
-            </fieldset>
-          </form>
-          {latest && (
-            <p className="hint space">
-              Última execução · {stamp(latest.started_at)} · {statuses[latest.status]}
+                <button className="action primary">
+                  {busy ? "Processando…" : "Executar /CFO"}
+                </button>
+              </fieldset>
+            </form>
+            {latest && (
+              <p className="hint space">
+                Última execução · {stamp(latest.started_at)} · {statuses[latest.status]}
+              </p>
+            )}
+            {!latest && history && <p className="hint space">Nenhuma execução registrada.</p>}
+          </section>
+          {liveError && (
+            <p className="notice error space" role="alert">
+              {liveError}
             </p>
           )}
-          {!latest && history && <p className="hint space">Nenhuma execução registrada.</p>}
-        </section>
-        <StatementImport finished={refresh} />
-      </div>
-      {report?.report && (
-        <CfoResults key={report.id} run={report} snapshot={report.report} onReviewed={refresh} />
-      )}
-      <div className="grid space">
-        <section className="panel">
-          <h2>Histórico de execuções</h2>
-          {!history && <p role="status">Carregando histórico…</p>}
-          {history?.runs.map((run) => (
-            <div className="actions" key={run.id}>
-              <span>
-                {run.start_on} a {run.end_on} · {run.source === "cron" ? "Automática" : "Manual"} ·{" "}
-                {statuses[run.status]}
-              </span>
-              {run.status === "succeeded" && (
-                <button className="action" onClick={() => void openRun(run.id)}>
-                  Abrir relatório
-                </button>
-              )}
-              {run.error && <small>{run.error}</small>}
-            </div>
-          ))}
-        </section>
-        <section className="panel">
-          <h2>Arquivos importados</h2>
-          {history?.imports.length === 0 && <p className="hint">Nenhum arquivo importado.</p>}
-          {history?.imports.map((file) => (
-            <p className="space" key={file.id}>
-              {file.file_name} · {file.account} · {stamp(file.created_at)}
+          {!snapshot && !liveError && !report && (
+            <p className="notice space" role="status">
+              {start && end && start <= end
+                ? "Carregando os indicadores do período…"
+                : "Informe um período válido."}
             </p>
-          ))}
-        </section>
-      </div>
-    </>
+          )}
+          {report && (
+            <button type="button" className="action space" onClick={() => setSelected(null)}>
+              Voltar aos indicadores atuais
+            </button>
+          )}
+          {(report || snapshot) && (
+            <CfoResults
+              key={selected?.id ?? start + end}
+              start={selected?.start_on ?? start}
+              end={selected?.end_on ?? end}
+              snapshot={(report ?? snapshot)!}
+              onReviewed={refresh}
+            />
+          )}
+        </>
+      )}
+      {section === "Importar extrato" && <StatementImport finished={refresh} />}
+      {section === "Histórico" && (
+        <>
+          <button type="button" className="action" onClick={refresh}>
+            Atualizar histórico
+          </button>
+          <div className="grid space">
+            <section className="panel">
+              <h2>Histórico de execuções</h2>
+              {!history && !error && <p role="status">Carregando histórico…</p>}
+              {history?.runs.length === 0 && <p className="hint">Nenhuma execução registrada.</p>}
+              {history?.runs.map((run) => (
+                <div className="actions" key={run.id}>
+                  <span>
+                    {run.start_on} a {run.end_on} ·{" "}
+                    {run.source === "cron" ? "Automática" : "Manual"} · {statuses[run.status]}
+                  </span>
+                  {run.status === "succeeded" && (
+                    <button className="action" onClick={() => void openRun(run.id)}>
+                      Abrir relatório
+                    </button>
+                  )}
+                  {run.error && <small>{run.error}</small>}
+                </div>
+              ))}
+            </section>
+            <section className="panel">
+              <h2>Arquivos importados</h2>
+              {history?.imports.length === 0 && <p className="hint">Nenhum arquivo importado.</p>}
+              {history?.imports.map((file) => (
+                <p className="space" key={file.id}>
+                  {file.file_name} · {file.account} · {stamp(file.created_at)}
+                </p>
+              ))}
+            </section>
+          </div>
+        </>
+      )}
+    </AccountLayout>
   );
 }
 
@@ -433,11 +507,13 @@ function StatementImport({ finished }: { finished: () => void }) {
 }
 
 function CfoResults({
-  run,
+  start,
+  end,
   snapshot,
   onReviewed,
 }: {
-  run: Run;
+  start: string;
+  end: string;
   snapshot: Snapshot;
   onReviewed: () => void;
 }) {
@@ -449,6 +525,7 @@ function CfoResults({
     ["DRE", "Despesas operacionais", snapshot.dre.expenses],
     ["DRE", "Resultado estimado", snapshot.dre.result],
     ["Caixa", "Entradas líquidas de estornos", snapshot.cash.received],
+    ["Caixa", "Recebimentos de serviços", snapshot.dre.receivedServices],
     ["Caixa", "Saídas pagas", snapshot.cash.paid],
     ["Caixa", "Variação de caixa", snapshot.cash.net],
   ] as const;
@@ -457,7 +534,7 @@ function CfoResults({
       "Período;Seção;Indicador;Valor em reais",
       ...rows.map(
         ([section, label, value]) =>
-          `${run.start_on} a ${run.end_on};${section};${label};${value === null ? "Em apuração" : value.toFixed(2).replace(".", ",")}`,
+          `${start} a ${end};${section};${label};${value === null ? "Em apuração" : value.toFixed(2).replace(".", ",")}`,
       ),
     ].join("\r\n");
     const url = URL.createObjectURL(
@@ -465,7 +542,7 @@ function CfoResults({
     );
     const a = document.createElement("a");
     a.href = url;
-    a.download = `ouro-branco-cfo-${run.start_on}.csv`;
+    a.download = `ouro-branco-cfo-${start}.csv`;
     a.click();
     window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
@@ -473,9 +550,22 @@ function CfoResults({
     <section className="panel space">
       <h2>Relatório do CFO</h2>
       <p className="hint">
-        {run.start_on} a {run.end_on} · Despesas da DRE comercial por vencimento. Pagamentos de
-        serviços já recebidos entram em caixa.
+        {start} a {end} · Despesas da DRE comercial por vencimento. Pagamentos de serviços já
+        recebidos entram em caixa.
       </p>
+      <div className="stats space">
+        {[
+          ["Receita comercial", snapshot.dre.revenue],
+          ["Recebimentos de serviços", snapshot.dre.receivedServices],
+          ["Saldo de caixa no período", snapshot.cash.net],
+          ["Resultado comercial estimado", snapshot.dre.result],
+        ].map(([label, amount]) => (
+          <div className="panel" key={label}>
+            <small>{label}</small>
+            <strong>{moneyBR(amount)}</strong>
+          </div>
+        ))}
+      </div>
       <div className="actions">
         <button className="action" onClick={exportCsv}>
           Baixar relatório CSV

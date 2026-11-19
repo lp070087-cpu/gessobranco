@@ -1,13 +1,26 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, Navigate, useNavigate } from "@tanstack/react-router";
+import { CalendarDays, ClipboardList, Package, Settings } from "lucide-react";
+import {
+  AccountLayout,
+  hasManagementAccess,
+  managementHome,
+} from "@/components/preciso/AccountMenu";
 import { CompanySession } from "@/components/preciso/CompanySession";
 import { commercialFetch, moneyBR } from "@/lib/commercial-client";
-import { hasCompanyPermission, type CompanyActor } from "@/lib/company-permissions";
+import type { CompanyActor } from "@/lib/company-permissions";
 import { measuredArea } from "@/lib/estimate";
 
 export const Route = createFileRoute("/minha-conta")({
-  validateSearch: (search: Record<string, unknown>): { secao?: "agenda" | "orcamento" } =>
-    search.secao === "agenda" || search.secao === "orcamento" ? { secao: search.secao } : {},
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { secao?: "agenda" | "orcamento" | "materiais" | "configuracoes" } =>
+    search.secao === "agenda" ||
+    search.secao === "orcamento" ||
+    search.secao === "materiais" ||
+    search.secao === "configuracoes"
+      ? { secao: search.secao }
+      : {},
   head: () => ({ meta: [{ title: "Minha conta — Ouro Branco" }] }),
   component: AccountRoute,
 });
@@ -36,6 +49,7 @@ type Order = {
   unit_name: string | null;
   quantity: string | null;
   quoted_unit_price: string | null;
+  proposal: { quantity: number; unit: string; unit_price: number; work: string } | null;
   notes: string;
   status: string;
   created_at: string;
@@ -74,53 +88,54 @@ const unitNames: Record<string, string> = {
   project: "projeto",
   quote: "sob orçamento",
 };
-const options = ["Materiais", "Solicitar orçamento", "Histórico", "Agendamentos"] as const;
+const options = [
+  { label: "Orçamentos e pedidos", section: undefined, icon: ClipboardList },
+  { label: "Materiais", section: "materiais", icon: Package },
+  { label: "Agendamentos", section: "agenda", icon: CalendarDays },
+  { label: "Minha conta", section: "configuracoes", icon: Settings },
+] as const;
 const field = (data: FormData, key: string) => String(data.get(key) ?? "").trim();
 
 function Account({ user }: { user: CompanyActor }) {
   const { secao } = Route.useSearch();
-  const [tab, setTab] = useState<(typeof options)[number]>(
-    secao === "agenda"
-      ? "Agendamentos"
-      : secao === "orcamento"
-        ? "Solicitar orçamento"
-        : "Materiais",
-  );
+  const navigate = useNavigate({ from: "/minha-conta" });
+  const showHistory = () => void navigate({ search: {} });
+  if (hasManagementAccess(user)) return <Navigate to={managementHome(user)} replace />;
   return (
-    <>
-      <nav aria-label="Minha conta">
-        {options.map((option) => (
-          <button
-            type="button"
-            key={option}
-            aria-current={tab === option ? "page" : undefined}
-            onClick={() => setTab(option)}
-          >
-            {option}
-          </button>
-        ))}
-        {user.role === "admin" && (
-          <Link to="/admin/comercial" className="action">
-            Gestão da Loja
-          </Link>
-        )}
-        {(user.role === "admin" ||
-          user.permissions.some((permission) => permission.startsWith("service_"))) && (
-          <Link to="/admin/gestao-servicos" className="action">
-            Gestão de Serviços
-          </Link>
-        )}
-        {hasCompanyPermission(user, "finance_cfo") && (
-          <Link to="/admin/cfo" className="action">
-            CFO
-          </Link>
-        )}
-      </nav>
-      {tab === "Materiais" && <Materials done={() => setTab("Histórico")} />}
-      {tab === "Solicitar orçamento" && <QuotesForm done={() => setTab("Histórico")} />}
-      {tab === "Histórico" && <History />}
-      {tab === "Agendamentos" && <Appointments />}
-    </>
+    <AccountLayout
+      key={secao ?? "historico"}
+      label="Menu da conta"
+      menu={options.map(({ label, section, icon: Icon }) => (
+        <Link
+          key={label}
+          to="/minha-conta"
+          search={section ? { secao: section } : {}}
+          activeOptions={{ exact: true, includeSearch: false }}
+          aria-current={secao === section ? "page" : undefined}
+          activeProps={{ "aria-current": secao === section ? "page" : undefined }}
+          className="account-menu-item"
+        >
+          <Icon size={17} aria-hidden="true" />
+          {label}
+        </Link>
+      ))}
+    >
+      {secao === "materiais" && <Materials done={showHistory} />}
+      {secao === "orcamento" && <QuotesForm done={showHistory} />}
+      {!secao && <History />}
+      {secao === "agenda" && <Appointments />}
+      {secao === "configuracoes" && (
+        <section className="panel account-profile">
+          <h2>Dados da conta</h2>
+          <dl>
+            <dt className="hint">Nome</dt>
+            <dd>{user.full_name}</dd>
+            <dt className="hint space">E-mail de acesso</dt>
+            <dd>{user.email}</dd>
+          </dl>
+        </section>
+      )}
+    </AccountLayout>
   );
 }
 
@@ -562,6 +577,17 @@ function History() {
               </p>
             )}
             {item.notes && <p className="request-notes">{item.notes}</p>}
+            {item.proposal && (
+              <div className="space">
+                <strong>Proposta da Ouro Branco</strong>
+                <p>
+                  {item.proposal.quantity} {item.proposal.unit} ×{" "}
+                  {moneyBR(item.proposal.unit_price)} ·{" "}
+                  {moneyBR(item.proposal.quantity * item.proposal.unit_price)}
+                </p>
+                <p className="request-notes">{item.proposal.work}</p>
+              </div>
+            )}
           </details>
         ))}
       </section>
@@ -569,16 +595,7 @@ function History() {
         <h2>Orçamentos e andamento</h2>
         <PortalStatus loaded={!!quotes.data} error={quotes.error} empty={!quotes.data?.length} />
         {quotes.data?.map((item) => (
-          <details key={item.id}>
-            <summary>
-              {item.title} · {labels[item.status] ?? item.status}
-            </summary>
-            <p>
-              {Number(item.total) > 0
-                ? `Estimativa preliminar ${moneyBR(item.total)}`
-                : "Valor sob análise da equipe"}
-            </p>
-          </details>
+          <QuoteHistory key={item.id} item={item} />
         ))}
         {projects.data?.map((item) => (
           <p className="space" key={item.id}>
@@ -589,6 +606,57 @@ function History() {
     </div>
   );
 }
+
+function QuoteHistory({ item }: { item: Quote }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <details onToggle={(event) => setOpen(event.currentTarget.open)}>
+      <summary>
+        {item.title} · {labels[item.status] ?? item.status}
+      </summary>
+      <p>
+        {!item.preliminary
+          ? `Valor da proposta ${moneyBR(item.total)}`
+          : Number(item.total) > 0
+            ? `Estimativa preliminar ${moneyBR(item.total)}`
+            : "Valor sob análise da equipe"}
+      </p>
+      {open && !item.preliminary && <PublishedQuote id={item.id} />}
+    </details>
+  );
+}
+
+function PublishedQuote({ id }: { id: string }) {
+  const query = usePortal<{
+    items: {
+      id: string;
+      name: string;
+      environment: string;
+      quantity: number;
+      billing_unit: string;
+      unit_price: string;
+      professional_work: string;
+    }[];
+  }>(`quotes/${id}`);
+  return (
+    <>
+      <PortalStatus error={query.error} loaded={!!query.data} />
+      {query.data?.items.map((item) => (
+        <div key={item.id} className="space">
+          <strong>
+            {item.name} · {item.environment}
+          </strong>
+          <p>
+            {item.quantity} {unitNames[item.billing_unit] ?? item.billing_unit} ×{" "}
+            {moneyBR(item.unit_price)}
+          </p>
+          <p className="request-notes">{item.professional_work}</p>
+        </div>
+      ))}
+    </>
+  );
+}
+
 function Appointments() {
   const { data, error, reload } = usePortal<Appointment[]>("portal/appointments");
   const [failure, setFailure] = useState(""),

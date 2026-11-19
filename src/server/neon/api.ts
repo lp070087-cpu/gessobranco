@@ -8,6 +8,7 @@ import { commercialRequest, publicCatalogue } from "./commercial";
 import { companyRequests, createCompanyRequest } from "./company-requests";
 import { cfoRequest, scheduledCfo } from "./cfo";
 import { portal } from "./portal";
+import { businessSettingsSchema, defaultBusinessSettings } from "@/lib/business-settings";
 import {
   companyPermissions,
   hasCompanyPermission,
@@ -43,6 +44,13 @@ const registration = credentials.extend({
   document: z.string().trim().max(30).optional(),
   accepted_terms: z.boolean().default(false),
 });
+const proposalLine = z
+  .object({
+    quantity: z.number().finite().min(0.001).max(10_000_000),
+    unit_price: z.number().finite().min(0).max(1_000_000),
+    work: z.string().trim().min(3).max(1500),
+  })
+  .strict();
 const serviceInput = z
   .object({
     key: z.string().regex(/^[a-z0-9-]{2,80}$/),
@@ -326,13 +334,40 @@ export async function handleNeonRequest(request: Request, now = new Date()): Pro
     const user = await actor(request);
     if (!user) return json({ error: "Autenticação necessária." }, 401);
     if (path === "auth/me" && request.method === "GET") return json({ user });
+    if (path === "admin/business-settings") {
+      if (user.role !== "admin") return json({ error: "Acesso restrito." }, 403);
+      if (request.method === "GET") {
+        const result = await db.execute(
+          sql`SELECT value FROM preciso.platform_settings WHERE key='business_profile'`,
+        );
+        return json({
+          ...defaultBusinessSettings,
+          ...(result.rows[0]?.value as object | undefined),
+        });
+      }
+      if (request.method === "PATCH") {
+        const settings = businessSettingsSchema.parse(await body(request));
+        await db.execute(sql`WITH changed AS (
+          INSERT INTO preciso.platform_settings(key,value,updated_by)
+          VALUES ('business_profile',${JSON.stringify(settings)}::jsonb,${user.id}::uuid)
+          ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value,updated_by=EXCLUDED.updated_by,updated_at=now()
+          RETURNING key
+        ) INSERT INTO preciso.audit_logs(actor_id,action,metadata)
+          SELECT ${user.id}::uuid,'business.settings',jsonb_build_object('key',key) FROM changed`);
+        return json(settings);
+      }
+    }
     if (path.startsWith("portal/"))
       return await portal(db, user, path, request, () => body(request));
     if (path.startsWith("cfo/")) {
       if (!hasCompanyPermission(user, "finance_cfo"))
         return json({ error: "Acesso restrito." }, 403);
-      return await cfoRequest(path, request.method, user.id, () =>
-        body(request, path === "cfo/import" ? 780000 : 65536),
+      return await cfoRequest(
+        path,
+        request.method,
+        user.id,
+        () => body(request, path === "cfo/import" ? 780000 : 65536),
+        new URL(request.url).searchParams,
       );
     }
     if (path === "admin/permissions" && request.method === "POST") {
@@ -406,9 +441,35 @@ export async function handleNeonRequest(request: Request, now = new Date()): Pro
       if (request.method === "GET") return json(await companyRequests(db, kind));
       if (request.method === "PATCH") {
         const input = z
-          .object({ id: z.string().uuid(), status: z.enum(["new", "contacted", "closed"]) })
-          .strict()
+          .union([
+            z
+              .object({ id: z.string().uuid(), status: z.enum(["new", "contacted", "closed"]) })
+              .strict(),
+            z
+              .object({
+                id: z.string().uuid(),
+                proposal: proposalLine.extend({
+                  unit: z.enum(["m²", "metro linear", "unidade", "diária", "projeto"]),
+                }),
+              })
+              .strict(),
+          ])
           .parse(await body(request));
+        if ("proposal" in input) {
+          const result = await db.execute(sql`WITH changed AS (
+            UPDATE preciso.company_requests
+            SET proposal=${JSON.stringify(input.proposal)}::jsonb,
+                status=CASE WHEN status='new' THEN 'contacted' ELSE status END
+            WHERE id=${input.id}::uuid AND kind='service' AND ${kind ?? "service"}='service'
+            RETURNING id,status,proposal
+          ), audited AS (
+            INSERT INTO preciso.audit_logs(actor_id,action,target_id,metadata)
+            SELECT ${user.id}::uuid,'request.proposal',id,proposal FROM changed
+          ) SELECT status,proposal FROM changed`);
+          return result.rows[0]
+            ? json(result.rows[0])
+            : json({ error: "Solicitação de serviço não encontrada." }, 404);
+        }
         const result = await db.execute(sql`WITH changed AS (
           UPDATE preciso.company_requests SET status=${input.status} WHERE id=${input.id}::uuid AND (${kind}::text IS NULL OR kind=${kind}::text) RETURNING id
         ), audited AS (
@@ -566,7 +627,7 @@ export async function handleNeonRequest(request: Request, now = new Date()): Pro
       const id = z.string().uuid().parse(path.split("/")[1]);
       const result = await db.execute(sql`SELECT q.*,
         (SELECT COALESCE(jsonb_agg(i ORDER BY i.id),'[]') FROM (
-          SELECT i.id,s.name,i.environment,i.quantity,i.unit_price,i.billing_unit,i.notes
+          SELECT i.id,s.name,i.environment,i.quantity,i.unit_price,i.billing_unit,i.notes,i.professional_work
           FROM preciso.quote_items i JOIN preciso.services s ON s.id=i.service_id WHERE i.quote_id=q.id
         ) i) AS items,
         (SELECT COALESCE(jsonb_agg(jsonb_build_object('status',h.status,'created_at',h.created_at) ORDER BY h.created_at,h.id),'[]')
@@ -581,6 +642,51 @@ export async function handleNeonRequest(request: Request, now = new Date()): Pro
       if (!hasCompanyPermission(user, "service_requests"))
         return json({ error: "Acesso restrito." }, 403);
       const id = z.string().uuid().parse(path.split("/")[1]);
+      const raw = await body(request);
+      const proposal = z
+        .object({
+          items: z
+            .array(proposalLine.extend({ id: z.string().uuid() }))
+            .min(1)
+            .max(100),
+        })
+        .strict()
+        .refine(
+          ({ items }) =>
+            items.reduce((total, item) => total + item.quantity * item.unit_price, 0) <
+            90_000_000_000_000,
+        )
+        .safeParse(raw);
+      if (proposal.success) {
+        const result = await db.execute(sql`WITH input AS (
+          SELECT * FROM jsonb_to_recordset(${JSON.stringify(proposal.data.items)}::jsonb)
+            AS x(id uuid,quantity numeric(14,3),unit_price numeric(14,2),work text)
+        ), locked AS (
+          SELECT id FROM preciso.quotes WHERE id=${id}::uuid
+            AND status IN ('requested','reviewing','visit_required','proposed') FOR UPDATE
+        ), valid AS (
+          SELECT l.id FROM locked l
+          WHERE (SELECT count(DISTINCT id) FROM input)=${proposal.data.items.length}
+            AND (SELECT count(*) FROM preciso.quote_items WHERE quote_id=l.id)=${proposal.data.items.length}
+            AND (SELECT count(*) FROM preciso.quote_items i JOIN input x ON x.id=i.id WHERE i.quote_id=l.id)=${proposal.data.items.length}
+        ), changed_items AS (
+          UPDATE preciso.quote_items i SET quantity=x.quantity,unit_price=x.unit_price,professional_work=x.work
+          FROM input x,valid v WHERE i.id=x.id AND i.quote_id=v.id RETURNING i.quantity,i.unit_price
+        ), changed AS (
+          UPDATE preciso.quotes q SET status='proposed',preliminary=false,
+            total=(SELECT sum(round(quantity*unit_price,2)) FROM changed_items),updated_at=now()
+          FROM valid v WHERE q.id=v.id RETURNING q.*
+        ), history AS (
+          INSERT INTO preciso.quote_history(quote_id,actor_id,status,notes)
+          SELECT id,${user.id},status,'Proposta comercial salva' FROM changed
+        ) SELECT * FROM changed`);
+        return result.rows[0]
+          ? json(result.rows[0])
+          : json(
+              { error: "O orçamento foi alterado ou já está encerrado. Atualize a lista." },
+              409,
+            );
+      }
       const input = z
         .object({
           status: z.enum([
@@ -595,7 +701,7 @@ export async function handleNeonRequest(request: Request, now = new Date()): Pro
           notes: z.string().max(5000).default(""),
         })
         .strict()
-        .parse(await body(request));
+        .parse(raw);
       const result = await db.execute(sql`WITH changed AS (
         UPDATE preciso.quotes SET status=${input.status},updated_at=now() WHERE id=${id} RETURNING *
       ), history AS (

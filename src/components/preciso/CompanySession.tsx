@@ -6,10 +6,12 @@ import "./commercial.css";
 
 export function CompanySession({
   title,
+  management,
   allowed,
   children,
 }: {
   title: string;
+  management?: boolean;
   allowed?: (user: CompanyActor) => boolean;
   children: (user: CompanyActor) => ReactNode;
 }) {
@@ -107,8 +109,14 @@ export function CompanySession({
               Minha conta
             </Link>
           ) : (
-            <Link to="/login" className="action primary">
-              Entrar
+            <Link
+              to="/login"
+              search={management || allowed ? { acesso: "gestao" } : {}}
+              className="action primary"
+            >
+              {management || allowed
+                ? "Entrar na gestão da loja e da empresa"
+                : "Entrar como cliente"}
             </Link>
           )}
         </section>

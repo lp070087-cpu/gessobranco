@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { commercialFetch, moneyBR } from "@/lib/commercial-client";
 
 type RequestStatus = "new" | "contacted" | "closed";
+type Proposal = { quantity: number; unit: string; unit_price: number; work: string };
 type Incoming = {
   id: string;
   kind: "service" | "material";
@@ -15,6 +16,7 @@ type Incoming = {
   notes: string;
   created_at: string;
   status: RequestStatus;
+  proposal: Proposal | null;
 };
 type Quote = {
   id: string;
@@ -60,6 +62,8 @@ export function CompanyRequests({
           quantity: number;
           billing_unit: string;
           notes: string;
+          unit_price: string;
+          professional_work: string;
         }[];
         history: { status: string; created_at: string }[];
       }
@@ -126,6 +130,57 @@ export function CompanyRequests({
       setBusy("");
     }
   }
+  async function saveProposal(event: FormEvent<HTMLFormElement>, entry: Incoming) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    setBusy(entry.id);
+    setError("");
+    setMessage("");
+    try {
+      const saved = await commercialFetch<{ status: RequestStatus; proposal: Proposal }>(
+        path,
+        { id: entry.id, proposal: { ...readProposal(form), unit: String(form.get("unit")) } },
+        undefined,
+        "PATCH",
+      );
+      setInbox(
+        (current) =>
+          current && {
+            ...current,
+            requests: current.requests.map((row) =>
+              row.id === entry.id ? { ...row, ...saved } : row,
+            ),
+          },
+      );
+      setMessage("Proposta salva.");
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : "Não foi possível salvar a proposta.");
+    } finally {
+      setBusy("");
+    }
+  }
+  async function saveQuote(event: FormEvent<HTMLFormElement>, id: string) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const items = quoteInfo[id].items.map((item) => ({
+      id: item.id,
+      ...readProposal(form, item.id),
+    }));
+    setBusy(id);
+    setError("");
+    setMessage("");
+    try {
+      await commercialFetch(`quotes/${id}`, { items }, undefined, "PATCH");
+      const detail = await commercialFetch<(typeof quoteInfo)[string]>(`quotes/${id}`);
+      setQuoteInfo((current) => ({ ...current, [id]: detail }));
+      setRevision((current) => current + 1);
+      setMessage("Proposta salva e disponível na conta do cliente.");
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : "Não foi possível salvar a proposta.");
+    } finally {
+      setBusy("");
+    }
+  }
   const requests = inbox?.requests.filter((entry) => entry.kind === kind) ?? [];
   return (
     <section className="panel">
@@ -154,7 +209,7 @@ export function CompanyRequests({
           Carregando solicitações…
         </p>
       )}
-      {inbox && !requests.length && (
+      {inbox && !requests.length && !inbox.quotes.length && (
         <p className="hint space">Nenhuma solicitação recebida pelo site.</p>
       )}
       {requests.map((entry) => (
@@ -177,7 +232,7 @@ export function CompanyRequests({
           <div className="actions">
             <a
               className="action"
-              href={`mailto:${encodeURIComponent(entry.email)}?subject=${encodeURIComponent("Ouro Branco — " + entry.subject)}`}
+              href={`mailto:${encodeURIComponent(entry.email)}?subject=${encodeURIComponent("Ouro Branco — " + entry.subject)}${entry.proposal ? "&body=" + encodeURIComponent(`${entry.proposal.work}\n${entry.proposal.quantity} ${entry.proposal.unit} × ${moneyBR(entry.proposal.unit_price)}\nTotal ${moneyBR(entry.proposal.quantity * entry.proposal.unit_price)}`) : ""}`}
             >
               Responder por e-mail
             </a>
@@ -196,6 +251,23 @@ export function CompanyRequests({
               </select>
             </label>
           </div>
+          {kind === "service" && (
+            <form className="space" onSubmit={(event) => void saveProposal(event, entry)}>
+              <fieldset disabled={!!busy}>
+                <legend>Proposta de serviço</legend>
+                <label>
+                  Unidade de cobrança
+                  <select name="unit" defaultValue={entry.proposal?.unit ?? "m²"}>
+                    {["m²", "metro linear", "unidade", "diária", "projeto"].map((unit) => (
+                      <option key={unit}>{unit}</option>
+                    ))}
+                  </select>
+                </label>
+                <ProposalFields value={entry.proposal ?? undefined} />
+                <button className="action primary">Salvar proposta</button>
+              </fieldset>
+            </form>
+          )}
         </details>
       ))}
       {kind === "service" && !!inbox?.quotes.length && (
@@ -255,8 +327,36 @@ export function CompanyRequests({
                     <p key={item.id}>
                       {item.name} · {item.environment} · {item.quantity} {item.billing_unit}
                       {item.notes && ` · ${item.notes}`}
+                      {item.professional_work &&
+                        ` · ${item.professional_work} · ${moneyBR(item.unit_price)} por unidade`}
                     </p>
                   ))}
+                  {["requested", "reviewing", "visit_required", "proposed"].includes(
+                    quote.status,
+                  ) &&
+                    quoteInfo[quote.id].items.length > 0 && (
+                      <form className="space" onSubmit={(event) => void saveQuote(event, quote.id)}>
+                        <fieldset disabled={!!busy}>
+                          <legend>Preparar proposta</legend>
+                          {quoteInfo[quote.id].items.map((item) => (
+                            <div className="space" key={item.id}>
+                              <strong>
+                                {item.name} · {item.environment} · {item.billing_unit}
+                              </strong>
+                              <ProposalFields
+                                suffix={item.id}
+                                value={{
+                                  quantity: item.quantity,
+                                  unit_price: Number(item.unit_price),
+                                  work: item.professional_work,
+                                }}
+                              />
+                            </div>
+                          ))}
+                          <button className="action primary">Salvar proposta</button>
+                        </fieldset>
+                      </form>
+                    )}
                   <p className="space">
                     <strong>Histórico</strong>
                   </p>
@@ -273,5 +373,63 @@ export function CompanyRequests({
         </>
       )}
     </section>
+  );
+}
+
+function readProposal(form: FormData, suffix = "") {
+  return {
+    quantity: Number(form.get("quantity" + suffix)),
+    unit_price: Number(form.get("price" + suffix)),
+    work: String(form.get("work" + suffix) ?? "").trim(),
+  };
+}
+
+function ProposalFields({
+  suffix = "",
+  value,
+}: {
+  suffix?: string;
+  value?: Pick<Proposal, "quantity" | "unit_price" | "work">;
+}) {
+  return (
+    <>
+      <div className="fields">
+        <label>
+          Medida ou quantidade{" "}
+          <input
+            name={"quantity" + suffix}
+            type="number"
+            min="0.001"
+            max="10000000"
+            step="0.001"
+            required
+            defaultValue={value?.quantity}
+          />
+        </label>
+        <label>
+          Preço por unidade (R$){" "}
+          <input
+            name={"price" + suffix}
+            type="number"
+            min="0"
+            max="1000000"
+            step="0.01"
+            required
+            defaultValue={value?.unit_price}
+          />
+        </label>
+      </div>
+      <label>
+        O que o profissional vai executar{" "}
+        <textarea
+          name={"work" + suffix}
+          minLength={3}
+          maxLength={1500}
+          rows={3}
+          required
+          defaultValue={value?.work}
+        />
+      </label>
+    </>
   );
 }

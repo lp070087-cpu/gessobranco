@@ -65,7 +65,7 @@ export async function createCompanyRequest(
 
 export async function companyRequests(db: Database, kind: "material" | "service" | null = null) {
   const inbound = await db.execute(sql`SELECT id,kind,name,email,phone,subject,unit_name,quantity,
-    notes,status,created_at,quoted_unit_price FROM preciso.company_requests
+    notes,status,created_at,quoted_unit_price,proposal FROM preciso.company_requests
     WHERE ${kind}::text IS NULL OR kind=${kind}::text ORDER BY created_at DESC LIMIT 200`);
   const quotes =
     kind === "material"

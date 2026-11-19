@@ -69,7 +69,7 @@ export async function portal(
   if (path === "portal/orders" && request.method === "GET") {
     const result =
       await db.execute(sql`SELECT id,kind,subject,unit_name,quantity,quoted_unit_price,notes,status,created_at
-      FROM preciso.company_requests WHERE user_id=${user.id}::uuid ORDER BY created_at DESC,id LIMIT 200`);
+      ,proposal FROM preciso.company_requests WHERE user_id=${user.id}::uuid ORDER BY created_at DESC,id LIMIT 200`);
     return noCache(result.rows);
   }
   if (path === "portal/service-request" && request.method === "POST") {

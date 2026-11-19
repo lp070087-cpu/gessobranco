@@ -20,7 +20,7 @@ test("real HTTP handlers enforce sessions, admin roles, input validation and ori
     await db.exec(
       await readFile(new URL("../drizzle/0002_company_requests.sql", import.meta.url), "utf8"),
     );
-    for (const migration of ["0003_company_operations", "0004_cfo"])
+    for (const migration of ["0003_company_operations", "0004_cfo", "0005_service_proposals"])
       await db.exec(
         await readFile(new URL(`../drizzle/${migration}.sql`, import.meta.url), "utf8"),
       );
@@ -169,6 +169,19 @@ test("real HTTP handlers enforce sessions, admin roles, input validation and ori
     );
     const updated = await (await request("admin/company-requests", token)).json();
     assert.equal(updated.requests.find((entry) => entry.id === service.id).status, "contacted");
+    const proposal = { unit: "m²", quantity: 8, unit_price: 35, work: "Instalar forro de gesso." };
+    const saveProposal = (id) =>
+      request("admin/company-requests?kind=service", token, { id, proposal }, undefined, "PATCH");
+    assert.equal(
+      (await saveProposal(inbox.requests.find((entry) => entry.kind === "material").id)).status,
+      404,
+    );
+    assert.deepEqual((await (await saveProposal(service.id)).json()).proposal, proposal);
+    assert.equal((await request("admin/business-settings", token)).status, 200);
+    const cfoOverview = await request("cfo/overview?start=2026-11-18&end=2026-11-18", token);
+    assert.equal(cfoOverview.status, 200);
+    assert.equal((await cfoOverview.json()).dre.receivedServices, 0);
+    assert.equal((await (await request("cfo/history", token)).json()).runs.length, 0);
     await db.exec("UPDATE preciso.company_requests SET created_at='2026-11-18T15:00:00Z'");
     const overviewPath = "commercial/overview?start=2026-11-18&end=2026-11-18";
     assert.equal((await request(overviewPath)).status, 401);
@@ -370,6 +383,28 @@ test("real HTTP handlers enforce sessions, admin roles, input validation and ori
     const quote = await placedQuote.json();
     assert.equal(Number(quote.total), 240);
     assert.equal((await (await request("quotes", staffToken, quotePayload)).json()).id, quote.id);
+    const quoteDetails = await (await request(`quotes/${quote.id}`, staffToken)).json();
+    const proposalResponse = await request(
+      `quotes/${quote.id}`,
+      token,
+      {
+        items: [
+          {
+            id: quoteDetails.items[0].id,
+            quantity: 10,
+            unit_price: 42,
+            work: "Instalar e dar acabamento.",
+          },
+        ],
+      },
+      undefined,
+      "PATCH",
+    );
+    assert.equal(proposalResponse.status, 200);
+    assert.equal(Number((await proposalResponse.json()).total), 420);
+    const updatedQuote = await (await request(`quotes/${quote.id}`, staffToken)).json();
+    assert.equal(updatedQuote.items[0].professional_work, "Instalar e dar acabamento.");
+    assert.equal(updatedQuote.preliminary, false);
     assert.equal(
       (await request(`quotes/${quote.id}`, staffToken, { status: "approved" }, undefined, "PATCH"))
         .status,

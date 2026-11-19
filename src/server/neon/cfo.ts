@@ -47,12 +47,10 @@ const review = z
     reason: z.string().trim().min(4).max(500),
   })
   .strict();
-const period = z
-  .object({ start: date, end: date, request_key: z.string().uuid() })
-  .strict()
-  .refine(
-    ({ start, end }) => end >= start && Date.parse(end) - Date.parse(start) <= 366 * 86400000,
-  );
+const validPeriod = ({ start, end }: { start: string; end: string }) =>
+  end >= start && Date.parse(end) - Date.parse(start) <= 366 * 86400000;
+const dates = z.object({ start: date, end: date });
+const period = dates.extend({ request_key: z.string().uuid() }).strict().refine(validPeriod);
 
 const json = (value: unknown, status = 200) =>
   new Response(JSON.stringify(value), {
@@ -271,7 +269,15 @@ export async function cfoRequest(
   method: string,
   actorId: string,
   read: () => Promise<unknown>,
+  search = new URLSearchParams(),
 ) {
+  if (path === "cfo/overview" && method === "GET") {
+    const { start, end } = dates.refine(validPeriod).parse({
+      start: search.get("start"),
+      end: search.get("end"),
+    });
+    return json(await analysis(start, end));
+  }
   if (method === "GET" && /^cfo\/history\/[0-9a-f-]{36}$/.test(path)) {
     const id = z.string().uuid().parse(path.split("/")[2]);
     const result = await database()

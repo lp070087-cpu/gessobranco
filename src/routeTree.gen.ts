@@ -29,6 +29,7 @@ import { Route as AppOrcamentosRouteImport } from './routes/_app.orcamentos'
 import { Route as AppPerfilRouteImport } from './routes/_app.perfil'
 import { Route as AppServicesRouteImport } from './routes/_app.services'
 import { Route as AdminIndexRouteImport } from './routes/admin.index'
+import { Route as AdminAdministracaoRouteImport } from './routes/admin.administracao'
 import { Route as AdminAgendaRouteImport } from './routes/admin.agenda'
 import { Route as AdminAvaliacoesRouteImport } from './routes/admin.avaliacoes'
 import { Route as AdminCfoRouteImport } from './routes/admin.cfo'
@@ -148,6 +149,11 @@ const AppServicesRoute = AppServicesRouteImport.update({
 const AdminIndexRoute = AdminIndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminAdministracaoRoute = AdminAdministracaoRouteImport.update({
+  id: '/administracao',
+  path: '/administracao',
   getParentRoute: () => AdminRoute,
 } as any)
 const AdminAgendaRoute = AdminAgendaRouteImport.update({
@@ -275,6 +281,7 @@ export interface FileRoutesByFullPath {
   '/orcamentos': typeof AppOrcamentosRoute
   '/perfil': typeof AppPerfilRoute
   '/services': typeof AppServicesRouteWithChildren
+  '/admin/administracao': typeof AdminAdministracaoRoute
   '/admin/agenda': typeof AdminAgendaRoute
   '/admin/avaliacoes': typeof AdminAvaliacoesRoute
   '/admin/cfo': typeof AdminCfoRoute
@@ -315,6 +322,7 @@ export interface FileRoutesByTo {
   '/orcamentos': typeof AppOrcamentosRoute
   '/perfil': typeof AppPerfilRoute
   '/services': typeof AppServicesRouteWithChildren
+  '/admin/administracao': typeof AdminAdministracaoRoute
   '/admin/agenda': typeof AdminAgendaRoute
   '/admin/avaliacoes': typeof AdminAvaliacoesRoute
   '/admin/cfo': typeof AdminCfoRoute
@@ -359,6 +367,7 @@ export interface FileRoutesById {
   '/_app/orcamentos': typeof AppOrcamentosRoute
   '/_app/perfil': typeof AppPerfilRoute
   '/_app/services': typeof AppServicesRouteWithChildren
+  '/admin/administracao': typeof AdminAdministracaoRoute
   '/admin/agenda': typeof AdminAgendaRoute
   '/admin/avaliacoes': typeof AdminAvaliacoesRoute
   '/admin/cfo': typeof AdminCfoRoute
@@ -403,6 +412,7 @@ export interface FileRouteTypes {
     | '/orcamentos'
     | '/perfil'
     | '/services'
+    | '/admin/administracao'
     | '/admin/agenda'
     | '/admin/avaliacoes'
     | '/admin/cfo'
@@ -443,6 +453,7 @@ export interface FileRouteTypes {
     | '/orcamentos'
     | '/perfil'
     | '/services'
+    | '/admin/administracao'
     | '/admin/agenda'
     | '/admin/avaliacoes'
     | '/admin/cfo'
@@ -486,6 +497,7 @@ export interface FileRouteTypes {
     | '/_app/orcamentos'
     | '/_app/perfil'
     | '/_app/services'
+    | '/admin/administracao'
     | '/admin/agenda'
     | '/admin/avaliacoes'
     | '/admin/cfo'
@@ -665,6 +677,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/admin/'
       preLoaderRoute: typeof AdminIndexRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/administracao': {
+      id: '/admin/administracao'
+      path: '/administracao'
+      fullPath: '/admin/administracao'
+      preLoaderRoute: typeof AdminAdministracaoRouteImport
       parentRoute: typeof AdminRoute
     }
     '/admin/agenda': {
@@ -854,6 +873,7 @@ const AppRouteChildren: AppRouteChildren = {
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
 
 interface AdminRouteChildren {
+  AdminAdministracaoRoute: typeof AdminAdministracaoRoute
   AdminAgendaRoute: typeof AdminAgendaRoute
   AdminAvaliacoesRoute: typeof AdminAvaliacoesRoute
   AdminCfoRoute: typeof AdminCfoRoute
@@ -871,6 +891,7 @@ interface AdminRouteChildren {
 }
 
 const AdminRouteChildren: AdminRouteChildren = {
+  AdminAdministracaoRoute: AdminAdministracaoRoute,
   AdminAgendaRoute: AdminAgendaRoute,
   AdminAvaliacoesRoute: AdminAvaliacoesRoute,
   AdminCfoRoute: AdminCfoRoute,

@@ -253,6 +253,42 @@
 .commercial .company-menu-toggle {
   display: none;
 }
+.commercial .account-menu {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: 14px;
+  padding: 10px;
+}
+.commercial .account-menu nav {
+  padding: 0;
+}
+.commercial .account-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 9px 11px;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.35;
+}
+.commercial .account-menu-item svg {
+  flex-shrink: 0;
+}
+.commercial .account-menu-item:hover {
+  background: var(--background);
+}
+.commercial .account-menu-item[aria-current="page"] {
+  background: var(--foreground);
+  color: var(--background);
+  font-weight: 600;
+}
+.commercial .account-menu .company-menu-toggle {
+  gap: 9px;
+}
+.commercial .account-profile dd {
+  overflow-wrap: anywhere;
+}
 .commercial.request-fields {
   margin: 0;
   padding: 0;
