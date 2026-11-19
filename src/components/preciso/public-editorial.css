@@ -1120,3 +1120,104 @@
   text-align: center;
   color: inherit;
 }
+
+/* Keep the material controls within the card at every column width. */
+.editorial-services.catalogue-grid {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr));
+  gap: clamp(16px, 2.4vw, 24px);
+  row-gap: 32px;
+}
+@media (min-width: 1100px) {
+  .editorial-services.catalogue-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+.catalogue-card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.catalogue-card .catalogue-photo {
+  aspect-ratio: 1;
+}
+.catalogue-photo img {
+  object-fit: contain;
+}
+.catalogue-illustration {
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  padding: 8px;
+  border-radius: 8px;
+  background-image: url("/materiais-ouro-branco.png");
+  background-size: 300% 200%;
+}
+.catalogue-illustration .editorial-caption {
+  margin: 0;
+  padding: 3px 6px;
+  background: var(--surface);
+}
+.catalogue-placeholder {
+  display: grid;
+  place-items: center;
+}
+.catalogue-card .request-fields {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  margin-top: 12px;
+}
+.catalogue-card .product-estimate {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 145px), 1fr));
+  gap: 8px;
+}
+.catalogue-card .product-estimate label {
+  min-width: 0;
+  margin-bottom: 0;
+}
+.catalogue-card .product-estimate :is(input, select) {
+  min-width: 0;
+  max-width: 100%;
+  padding-inline: 8px;
+}
+.catalogue-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  margin-top: auto;
+  padding-top: 4px;
+}
+.catalogue-actions .editorial-text-link {
+  max-width: 100%;
+  min-height: 44px;
+  gap: 8px;
+  white-space: normal;
+  text-align: left;
+}
+.catalogue-actions svg {
+  flex: none;
+}
+.catalogue-actions :is(a, button):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+@media (max-width: 640px) {
+  .catalogue-card .product-estimate :is(input, select) {
+    font-size: 16px;
+  }
+}
+.editorial-maintenance {
+  display: grid;
+  gap: 12px;
+  margin-top: 28px;
+}
+.editorial-maintenance .editorial-text-link {
+  justify-self: start;
+  white-space: normal;
+  text-align: left;
+}

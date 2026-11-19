@@ -26,7 +26,7 @@ export const Route = createFileRoute("/")({
   component: Index,
 });
 const NAV = [
-  { href: "#produtos", label: "Produtos" },
+  { href: "#produtos", label: "Materiais" },
   { href: "#servicos", label: "Especialidades" },
   { href: "#ambientes", label: "Ambientes" },
   { href: "#processo", label: "Como trabalhamos" },
@@ -34,14 +34,15 @@ const NAV = [
 ];
 const DETAILS: Record<string, string> = {
   gesso: "Superfícies lisas e detalhes que acompanham a arquitetura do ambiente.",
-  forro: "Rebaixos, sancas e soluções para integrar o teto à iluminação.",
-  drywall: "Divisórias e novas possibilidades para organizar o espaço.",
+  forro:
+    "Forro de gesso simples ou decorado, com opções de rebaixo, sancas e integração com a iluminação.",
+  drywall: "Paredes divisórias em drywall para organizar ambientes residenciais e comerciais.",
   pintura: "Preparação de superfícies e pintura para renovar paredes e tetos.",
   textura: "Texturas e acabamentos decorativos para dar expressão às paredes.",
   massa: "Nivelamento e preparação da base antes da pintura.",
   parede3d: "Revestimentos com relevo para destacar uma parede.",
   reparos: "Avaliação e correção de pequenos defeitos nas superfícies.",
-  reforma: "Planejamento das intervenções e dos acabamentos de uma reforma.",
+  reforma: "Planejamento e acabamentos para renovar casas, escritórios e lojas.",
 };
 const FEATURED = ["gesso", "forro", "drywall", "pintura"].map((key) =>
   SERVICES.find((s) => s.key === key)!,
@@ -176,10 +177,10 @@ function Index() {
             <h1 id="entry-title">OURO BRANCO</h1>
             <div className="editorial-entry-actions">
               <a className="editorial-button" href="#planejar">
-                Orçamento de serviço <ArrowUpRight size={16} />
+                Solicitar orçamento de serviços <ArrowUpRight size={16} aria-hidden="true" />
               </a>
               <a className="editorial-button" href="#produtos">
-                Comprar material <ArrowUpRight size={16} />
+                Comprar materiais <ArrowUpRight size={16} aria-hidden="true" />
               </a>
             </div>
           </div>
@@ -251,7 +252,10 @@ function Index() {
                 <em>Um novo ambiente.</em>
               </h2>
             </div>
-            <p>Do teto às paredes, soluções para construir, renovar e cuidar dos acabamentos.</p>
+            <p>
+              Forros, divisórias, pintura e acabamentos para construir ou reformar casas,
+              escritórios e lojas.
+            </p>
           </div>
           <div className="editorial-services">
             {showcase.map((service, i) => (
@@ -301,6 +305,26 @@ function Index() {
             </div>
           </details>
           <p className="editorial-caption">Imagens ilustrativas dos tipos de acabamento.</p>
+          <div className="editorial-maintenance" data-reveal>
+            <h3>Forro mineral e elétrica</h3>
+            <p>
+              Se a reforma inclui forro mineral ou serviços de elétrica, informe no pedido de
+              orçamento para a equipe avaliar o escopo junto com os acabamentos.
+            </p>
+            <h3>Umidade, mofo ou rachaduras?</h3>
+            <p>
+              Ao solicitar uma avaliação, informe se há goteiras, manchas no teto, mofo, reboco
+              solto ou rachaduras. A indicação de reparo, acabamento ou gesso impermeável depende da
+              avaliação técnica da causa e das condições do local.
+            </p>
+            <button
+              type="button"
+              className="editorial-text-link"
+              onClick={() => setRequestService(true)}
+            >
+              Solicitar orçamento de serviços <ArrowUpRight size={17} aria-hidden="true" />
+            </button>
+          </div>
         </section>
         <PublicProducts />
         <section id="ambientes" className="editorial-gallery-section">

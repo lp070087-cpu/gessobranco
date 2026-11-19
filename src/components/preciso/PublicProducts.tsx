@@ -55,23 +55,24 @@ export function PublicProducts() {
           </h2>
         </div>
         <p>
-          Consulte os materiais disponíveis e solicite uma proposta para a quantidade de que
-          precisa.
+          Escolha o material, a unidade e a quantidade para consultar a compra. Se já tem uma lista
+          de materiais, deixe os detalhes no pedido.
         </p>
       </div>
       {status === "loading" && <PanelSkeleton label="Carregando produtos…" />}
       {status === "error" && (
         <p className="editorial-intro">
-          O catálogo está indisponível no momento. Solicite uma avaliação para consultar os
-          materiais.
+          O catálogo está indisponível no momento. Você pode enviar uma consulta de material à
+          equipe.
         </p>
       )}
       {status === "ready" && !products.length && (
         <p className="editorial-intro">
-          Consulte a equipe para saber quais materiais estão disponíveis para sua obra.
+          Os materiais abaixo são referências para consulta. Confirme preço, embalagem e
+          disponibilidade com a equipe.
         </p>
       )}
-      <div className="editorial-services">
+      <div className="editorial-services catalogue-grid">
         {(status === "loading"
           ? []
           : [
@@ -98,17 +99,18 @@ export function PublicProducts() {
 const materials = [
   {
     name: "Gesso em pó",
-    match: /\bgesso\b/,
-    description: "Gesso a granel ou em saco para serviços de acabamento.",
+    match: /(?:^gesso$|\bgesso (?:em po|a granel|em saco)\b)/,
+    description:
+      "Para acabamentos em paredes e tetos. Consulte a apresentação e a unidade de venda.",
   },
   {
     name: "Placa de gesso",
-    match: /\bplacas?\b/,
+    match: /\bplacas? de gesso\b/,
     description: "Placas para montagem de forros e acabamentos.",
   },
   {
     name: "Bloco de gesso",
-    match: /\bblocos?\b/,
+    match: /\bblocos? de gesso\b/,
     description: "Blocos para divisórias e vedações internas.",
   },
   {
@@ -133,6 +135,7 @@ function family(name: string) {
     .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "");
+  if (/\b(drywall|impermeavel|mineral|acartonad[oa]s?)\b/.test(normalized)) return -1;
   const specific = materials.findIndex(({ match }, index) => index > 0 && match.test(normalized));
   return specific >= 0 ? specific : materials[0].match.test(normalized) ? 0 : -1;
 }
@@ -148,9 +151,9 @@ const references: PublicProduct[] = materials.map(({ name, description }, index)
   units:
     index === 0
       ? [
-          { name: "1 quilo", factor: "1", price: "2" },
-          { name: "Saco", factor: "", price: "25" },
-          { name: "Meio saco (20 kg)", factor: "20", price: "15" },
+          { name: "Quilo", factor: "1", price: null },
+          { name: "Meio saco", factor: "", price: null },
+          { name: "Saco", factor: "", price: null },
         ]
       : [],
 }));
@@ -169,6 +172,10 @@ function ProductCard({
   const unit = product.units.find((entry) => entry.name === unitName);
   const reference = product.id.startsWith("reference-");
   const imageIndex = family(product.name);
+  const [failedImage, setFailedImage] = useState<string | null>(null);
+  const image = product.image_url === failedImage ? null : product.image_url;
+  const amount = Number(quantity);
+  const validQuantity = Number.isFinite(amount) && amount >= 0.000001 && amount <= 1_000_000;
   const unitId = customer ? unit?.id : undefined;
   const [pricing, setPricing] = useState<{
     unit: string;
@@ -177,7 +184,7 @@ function ProductCard({
     next_tier: { quantity: number; price: number } | null;
   } | null>(null);
   useEffect(() => {
-    if (!unitId || Number(quantity) <= 0 || Number(quantity) > 1_000_000) return;
+    if (!unitId || !validQuantity) return;
     const controller = new AbortController();
     const id = unitId;
     const timeout = window.setTimeout(() => {
@@ -185,7 +192,7 @@ function ProductCard({
         "portal/price",
         {
           unit_id: id,
-          quantity: Number(quantity),
+          quantity: amount,
         },
         controller.signal,
       )
@@ -198,42 +205,50 @@ function ProductCard({
       window.clearTimeout(timeout);
       controller.abort();
     };
-  }, [unitId, quantity]);
+  }, [amount, quantity, unitId, validQuantity]);
   const quote = pricing?.unit === unitId && pricing?.quantity === quantity ? pricing : null;
   const estimate = unitId ? quote?.price : unit?.price;
   const tier = quote?.next_tier;
   return (
-    <article data-reveal>
-      {product.image_url ? (
-        <div className="editorial-service-photo">
-          <img src={product.image_url} alt={product.name} width="600" height="750" loading="lazy" />
+    <article className="catalogue-card" data-reveal>
+      {image ? (
+        <div className="editorial-service-photo catalogue-photo">
+          <img
+            src={image}
+            alt={product.name}
+            width="600"
+            height="600"
+            loading="lazy"
+            onError={() => setFailedImage(image)}
+          />
         </div>
       ) : imageIndex >= 0 ? (
         <div
+          className="catalogue-photo catalogue-illustration"
           role="img"
           aria-label={`Ilustração de ${materials[imageIndex].name.toLowerCase()}`}
           style={{
-            aspectRatio: "1",
-            borderRadius: "8px",
-            backgroundImage: "url('/materiais-ouro-branco.png')",
-            backgroundSize: "300% 200%",
             backgroundPosition: `${(imageIndex % 3) * 50}% ${imageIndex < 3 ? 0 : 100}%`,
           }}
-        />
-      ) : null}
+        >
+          <span className="editorial-caption">Imagem ilustrativa</span>
+        </div>
+      ) : (
+        <div className="editorial-service-photo catalogue-photo catalogue-placeholder">
+          <span className="editorial-caption">Imagem indisponível</span>
+        </div>
+      )}
       <div className="editorial-service-title">
         <h3>{product.name}</h3>
       </div>
       <p>{product.description}</p>
       <p className="editorial-caption">
-        {product.available ? "Disponível para consulta" : "Consulte a disponibilidade"}
+        {reference
+          ? "Material sob consulta"
+          : product.available
+            ? "Disponível para consulta"
+            : "Consulte a disponibilidade"}
       </p>
-      {reference && imageIndex === 0 && (
-        <p className="editorial-caption">
-          Preços de referência. Confirme o valor, o peso da embalagem e o frete com a equipe.
-        </p>
-      )}
-      {reference && imageIndex !== 0 && <p className="editorial-caption">Preço sob consulta</p>}
       <form
         className="commercial request-fields"
         onSubmit={(event) => {
@@ -243,7 +258,7 @@ function ProductCard({
             subject: product.name,
             product_id: reference || !unitName ? undefined : product.id,
             unit_name: unitName || undefined,
-            quantity: unitName ? Number(quantity) : undefined,
+            quantity: unitName ? amount : undefined,
             order_unit_id: unitId,
           });
         }}
@@ -274,35 +289,36 @@ function ProductCard({
             </label>
           </div>
         )}
-        {unit?.factor && Number(quantity) > 0 && (
+        {unit?.factor && validQuantity && (
           <p>
-            {quantityBR(Number(unit.factor) * Number(quantity))} {product.base_unit}
+            {quantityBR(Number(unit.factor) * amount)} {product.base_unit}
           </p>
         )}
-        {estimate != null && Number(quantity) > 0 && (
-          <p aria-live="polite">
-            Valor estimado {moneyBR(Number(estimate) * Number(quantity))} · {moneyBR(estimate)} por
-            unidade
-          </p>
-        )}
+        <p aria-live="polite">
+          {estimate != null && validQuantity
+            ? `Valor estimado ${moneyBR(Number(estimate) * amount)} · ${moneyBR(estimate)} por unidade`
+            : "Preço sob consulta"}
+        </p>
         {tier && (
           <p aria-live="polite">
-            Faltam {quantityBR(tier.quantity - Number(quantity))} para pagar{" "}
+            Faltam {quantityBR(tier.quantity - amount)} para pagar{" "}
             <strong>{moneyBR(tier.price)}</strong> por unidade.{" "}
             <button type="button" onClick={() => setQuantity(String(tier.quantity))}>
               Aplicar faixa de {quantityBR(tier.quantity)}
             </button>
           </p>
         )}
-        <button className="editorial-text-link">
-          Solicitar orçamento <ArrowUpRight size={17} aria-hidden="true" />
-        </button>
+        <div className="catalogue-actions">
+          {!reference && (
+            <Link to="/minha-conta" search={{ secao: "materiais" }} className="editorial-text-link">
+              Ver preços por quantidade na minha conta <ArrowUpRight size={17} aria-hidden="true" />
+            </Link>
+          )}
+          <button className="editorial-text-link" type="submit">
+            Consultar compra <ArrowUpRight size={17} aria-hidden="true" />
+          </button>
+        </div>
       </form>
-      {!reference && (
-        <Link to="/minha-conta" search={{ secao: "materiais" }} className="editorial-text-link">
-          Ver preços por quantidade na minha conta <ArrowUpRight size={17} aria-hidden="true" />
-        </Link>
-      )}
     </article>
   );
 }

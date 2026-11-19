@@ -27,7 +27,29 @@ export function ProductMotion() {
       element.classList.remove("ouro-enter");
       observer.observe(element);
     });
-    return () => observer.disconnect();
+
+    // The public catalogue loads after the route renders.
+    const catalogue = document.querySelector(".catalogue-grid");
+    const catalogueObserver = catalogue
+      ? new MutationObserver((changes) => {
+          for (const change of changes) {
+            for (const card of change.addedNodes) {
+              if (card instanceof HTMLElement && card.hasAttribute("data-reveal")) {
+                observer.observe(card);
+              }
+            }
+            for (const card of change.removedNodes) {
+              if (card instanceof HTMLElement) observer.unobserve(card);
+            }
+          }
+        })
+      : null;
+    if (catalogue) catalogueObserver?.observe(catalogue, { childList: true });
+
+    return () => {
+      catalogueObserver?.disconnect();
+      observer.disconnect();
+    };
   }, [pathname]);
 
   return null;
