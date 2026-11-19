@@ -294,13 +294,16 @@ function Cfo({ user }: { user: CompanyActor }) {
               {liveError}
             </p>
           )}
-          {!snapshot && !liveError && !report && (
-            <p className="notice space" role="status">
-              {start && end && start <= end
-                ? "Carregando os indicadores do período…"
-                : "Informe um período válido."}
-            </p>
-          )}
+          {!snapshot &&
+            !liveError &&
+            !report &&
+            (start && end && start <= end ? (
+              <PanelSkeleton label="Carregando indicadores do período…" />
+            ) : (
+              <p className="notice space" role="status">
+                Informe um período válido.
+              </p>
+            ))}
           {report && (
             <button type="button" className="action space" onClick={() => setSelected(null)}>
               Voltar aos indicadores atuais
@@ -350,7 +353,7 @@ function Cfo({ user }: { user: CompanyActor }) {
           <div className="grid space">
             <section className="panel">
               <h2>Histórico de execuções</h2>
-              {!history && !error && <p role="status">Carregando histórico…</p>}
+              {!history && !error && <PanelSkeleton label="Carregando histórico…" />}
               {history?.runs.length === 0 && <p className="hint">Nenhuma execução registrada.</p>}
               {history?.runs.map((run) => (
                 <div className="actions" key={run.id}>
@@ -477,7 +480,7 @@ function CfoComparison({
         </p>
       )}
       {valid && !error && !currentError && !(snapshot && earlier) && (
-        <p role="status">Carregando comparação…</p>
+        <PanelSkeleton label="Carregando comparação…" />
       )}
       {snapshot && earlier && (
         <div className="table-scroll">
@@ -1187,3 +1190,4 @@ function ReviewMove({ move, done }: { move: Move; done: () => void }) {
     </details>
   );
 }
+import { PanelSkeleton } from "@/components/preciso/LoadingSkeleton";

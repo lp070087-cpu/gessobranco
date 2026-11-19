@@ -29,12 +29,7 @@ function ServiceDetail() {
   const { key } = Route.useParams();
   const { services, loading, error } = useServiceCatalog();
   const service = services.find((item) => item.key === key);
-  if (loading)
-    return (
-      <p role="status" className="p-8 text-muted-foreground">
-        Carregando serviço…
-      </p>
-    );
+  if (loading) return <LoadingSkeleton />;
   if (error)
     return (
       <div role="alert" className="p-8">
@@ -137,3 +132,4 @@ function ServiceDetail() {
     </div>
   );
 }
+import { LoadingSkeleton } from "@/components/preciso/LoadingSkeleton";

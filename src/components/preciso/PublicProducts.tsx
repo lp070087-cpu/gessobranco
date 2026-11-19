@@ -50,7 +50,7 @@ export function PublicProducts() {
           precisa.
         </p>
       </div>
-      {status === "loading" && <p role="status">Carregando produtos…</p>}
+      {status === "loading" && <PanelSkeleton label="Carregando produtos…" />}
       {status === "error" && (
         <p className="editorial-intro">
           O catálogo está indisponível no momento. Solicite uma avaliação para consultar os
@@ -192,3 +192,4 @@ function ProductCard({
     </article>
   );
 }
+import { PanelSkeleton } from "@/components/preciso/LoadingSkeleton";

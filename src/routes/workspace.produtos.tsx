@@ -160,7 +160,7 @@ function ProductsPage() {
         </div>
         <div className="md:col-span-2 space-y-3">
           {loading ? (
-            <Loader2 className="size-6 animate-spin text-accent" />
+            <PanelSkeleton label="Carregando produtos…" />
           ) : items.length === 0 ? (
             <div className="bg-surface border border-dashed border-border rounded-2xl p-10 text-center">
               <Package className="size-10 mx-auto text-muted-foreground mb-3" />
@@ -204,3 +204,4 @@ function ProductsPage() {
     </WorkspaceShell>
   );
 }
+import { PanelSkeleton } from "@/components/preciso/LoadingSkeleton";

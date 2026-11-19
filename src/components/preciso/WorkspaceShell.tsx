@@ -8,7 +8,6 @@ import {
   Wallet,
   CreditCard,
   LogOut,
-  Loader2,
   Menu,
   Sparkles,
   Building2,
@@ -82,11 +81,7 @@ export function WorkspaceShell({
   };
 
   if (loading || allowed === null) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <Loader2 className="size-6 animate-spin text-accent" />
-      </div>
-    );
+    return <LoadingSkeleton sidebar />;
   }
 
   if (!allowed) {
@@ -274,3 +269,4 @@ export function StatCard({
     </div>
   );
 }
+import { LoadingSkeleton } from "@/components/preciso/LoadingSkeleton";

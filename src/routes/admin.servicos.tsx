@@ -121,12 +121,7 @@ function AdminServicos() {
             após aplicar a migração operacional.
           </p>
         )}
-        {loading && (
-          <div role="status" className="py-12 flex justify-center">
-            <Loader2 className="size-6 animate-spin text-accent" />
-            <span className="sr-only">Carregando serviços</span>
-          </div>
-        )}
+        {loading && <PanelSkeleton label="Carregando serviços…" />}
         {loadError && (
           <button onClick={reload} className="text-accent underline">
             Tentar carregar novamente
@@ -293,3 +288,4 @@ function F({
     </div>
   );
 }
+import { PanelSkeleton } from "@/components/preciso/LoadingSkeleton";

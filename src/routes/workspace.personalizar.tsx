@@ -122,9 +122,7 @@ function PersonalizarPage() {
   if (loading) {
     return (
       <WorkspaceShell title="Personalizar marca">
-        <div className="h-40 flex items-center justify-center">
-          <Loader2 className="size-6 animate-spin text-accent" />
-        </div>
+        <PanelSkeleton label="Carregando personalização…" />
       </WorkspaceShell>
     );
   }
@@ -289,3 +287,4 @@ function Field({
     </div>
   );
 }
+import { PanelSkeleton } from "@/components/preciso/LoadingSkeleton";

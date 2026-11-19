@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { Check, Sparkles, Crown, Briefcase, Building2, Loader2 } from "lucide-react";
+import { Check, Sparkles, Crown, Briefcase, Building2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
 export const Route = createFileRoute("/planos")({
@@ -89,9 +89,7 @@ function PlansPage() {
 
       <section className="max-w-6xl mx-auto px-4 md:px-6 pb-24">
         {loading ? (
-          <div className="flex justify-center">
-            <Loader2 className="size-6 animate-spin text-accent" />
-          </div>
+          <PanelSkeleton label="Carregando planos…" />
         ) : (
           <div className="grid md:grid-cols-3 gap-4 md:gap-6">
             {plans.map((p) => {
@@ -169,3 +167,4 @@ function PlansPage() {
     </main>
   );
 }
+import { PanelSkeleton } from "@/components/preciso/LoadingSkeleton";

@@ -204,11 +204,7 @@ export function CompanyRequests({
           {message}
         </p>
       )}
-      {!inbox && !error && (
-        <p role="status" className="space">
-          Carregando solicitações…
-        </p>
-      )}
+      {!inbox && !error && <PanelSkeleton label="Carregando solicitações…" />}
       {inbox && !requests.length && !inbox.quotes.length && (
         <p className="hint space">Nenhuma solicitação recebida pelo site.</p>
       )}
@@ -433,3 +429,4 @@ function ProposalFields({
     </>
   );
 }
+import { PanelSkeleton } from "@/components/preciso/LoadingSkeleton";

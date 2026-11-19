@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Search, Ban, CheckCircle2, Trash2, Loader2, Building2 } from "lucide-react";
+import { Search, Ban, CheckCircle2, Trash2, Building2 } from "lucide-react";
 import { toast } from "sonner";
 import { AdminShell, EmptyState } from "@/components/preciso/AdminShell";
 import { supabase } from "@/integrations/supabase/client";
@@ -120,9 +120,7 @@ function AdminEmpresas() {
         </div>
 
         {loading ? (
-          <div className="py-20 flex items-center justify-center">
-            <Loader2 className="size-6 animate-spin text-accent" />
-          </div>
+          <PanelSkeleton label="Carregando empresas…" />
         ) : filtered.length === 0 ? (
           <EmptyState
             icon={Building2}
@@ -191,3 +189,4 @@ function AdminEmpresas() {
     </AdminShell>
   );
 }
+import { PanelSkeleton } from "@/components/preciso/LoadingSkeleton";

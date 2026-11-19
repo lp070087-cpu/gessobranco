@@ -14,6 +14,7 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { LoadingSkeleton } from "@/components/preciso/LoadingSkeleton";
 import "@/components/preciso/client-experience.css";
 
 export const Route = createFileRoute("/_app")({
@@ -60,15 +61,7 @@ function AppShell() {
   const initial = displayName.charAt(0).toUpperCase();
 
   if (loading || !user) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="flex gap-1.5">
-          <span className="size-2 rounded-full bg-accent animate-loading-dot" />
-          <span className="size-2 rounded-full bg-accent animate-loading-dot [animation-delay:0.15s]" />
-          <span className="size-2 rounded-full bg-accent animate-loading-dot [animation-delay:0.3s]" />
-        </div>
-      </div>
-    );
+    return <LoadingSkeleton />;
   }
 
   return (

@@ -13,7 +13,6 @@ import {
   Settings,
   LifeBuoy,
   LogOut,
-  Loader2,
   Shield,
   Menu,
   X,
@@ -117,11 +116,7 @@ export function AdminShell({
   };
 
   if (loading || allowed === null) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <Loader2 className="size-6 animate-spin text-accent" />
-      </div>
-    );
+    return <LoadingSkeleton sidebar />;
   }
   if (!allowed) {
     return (
@@ -352,3 +347,4 @@ export const inputCss =
 
 // re-export for unused warnings
 export { X };
+import { LoadingSkeleton } from "@/components/preciso/LoadingSkeleton";

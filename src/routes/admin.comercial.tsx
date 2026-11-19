@@ -211,12 +211,7 @@ function Commercial() {
     }
   }
 
-  if (loading)
-    return (
-      <main className="commercial">
-        <p role="status">Carregando gestão da loja…</p>
-      </main>
-    );
+  if (loading) return <LoadingSkeleton sidebar />;
   if (!user)
     return (
       <main className="commercial">
@@ -337,6 +332,8 @@ function Commercial() {
         <div className="company-content">
           {tab === "Pedidos de material" ? (
             <CompanyRequests kind="material" />
+          ) : !state && !error ? (
+            <PanelSkeleton label="Carregando dados da loja…" />
           ) : !state ? (
             <button
               className="action"
@@ -1139,3 +1136,4 @@ function Commercial() {
     </main>
   );
 }
+import { LoadingSkeleton, PanelSkeleton } from "@/components/preciso/LoadingSkeleton";

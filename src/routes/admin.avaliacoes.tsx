@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Star, Loader2 } from "lucide-react";
+import { Star } from "lucide-react";
 import { AdminShell, EmptyState } from "@/components/preciso/AdminShell";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -70,9 +70,7 @@ function Page() {
           ))}
         </div>
         {loading ? (
-          <div className="py-20 flex items-center justify-center">
-            <Loader2 className="size-6 animate-spin text-accent" />
-          </div>
+          <PanelSkeleton label="Carregando avaliações…" />
         ) : list.length === 0 ? (
           <EmptyState
             icon={Star}
@@ -108,3 +106,4 @@ function Page() {
     </AdminShell>
   );
 }
+import { PanelSkeleton } from "@/components/preciso/LoadingSkeleton";

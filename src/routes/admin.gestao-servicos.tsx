@@ -440,7 +440,7 @@ function Catalogue() {
             {error}
           </p>
         )}
-        {!rows && !error && <p role="status">Carregando catálogo…</p>}
+        {!rows && !error && <PanelSkeleton label="Carregando catálogo…" />}
         {rows?.map((service) => (
           <div className="actions" key={service.id}>
             <span>
@@ -616,7 +616,7 @@ function Agenda() {
           {error}
         </p>
       )}
-      {!rows && !error && <p role="status">Carregando agenda…</p>}
+      {!rows && !error && <PanelSkeleton label="Carregando agenda…" />}
       {rows?.length === 0 && <p className="hint">Nenhum agendamento recebido.</p>}
       {rows?.map((item) => (
         <details key={item.id}>
@@ -684,7 +684,7 @@ function Projects() {
           {error}
         </p>
       )}
-      {!rows && !error && <p role="status">Carregando serviços…</p>}
+      {!rows && !error && <PanelSkeleton label="Carregando serviços…" />}
       {rows?.length === 0 && (
         <p className="hint">
           Nenhum serviço em andamento. Abra uma obra a partir de um orçamento aprovado.
@@ -748,3 +748,4 @@ function Projects() {
     </section>
   );
 }
+import { PanelSkeleton } from "@/components/preciso/LoadingSkeleton";

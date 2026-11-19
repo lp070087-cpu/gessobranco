@@ -3,6 +3,7 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { commercialFetch } from "@/lib/commercial-client";
 import type { CompanyActor } from "@/lib/company-permissions";
 import "./commercial.css";
+import { PanelSkeleton } from "@/components/preciso/LoadingSkeleton";
 
 export function CompanySession({
   title,
@@ -98,7 +99,7 @@ export function CompanySession({
         </p>
       )}
       {loading ? (
-        <p role="status">Carregando…</p>
+        <PanelSkeleton label={`Carregando ${title}…`} />
       ) : granted ? (
         children(user)
       ) : (

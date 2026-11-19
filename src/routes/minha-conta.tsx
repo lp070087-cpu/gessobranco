@@ -173,7 +173,7 @@ function PortalStatus({
       {error}
     </p>
   ) : !loaded ? (
-    <p role="status">Carregando…</p>
+    <PanelSkeleton />
   ) : empty ? (
     <p className="hint">Nenhum registro disponível.</p>
   ) : null;
@@ -718,3 +718,4 @@ function Appointments() {
     </section>
   );
 }
+import { PanelSkeleton } from "@/components/preciso/LoadingSkeleton";

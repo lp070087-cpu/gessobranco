@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { HardHat, Plus, Loader2, RefreshCw, CheckCircle2 } from "lucide-react";
+import { HardHat, Plus, RefreshCw, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 import { AdminShell, EmptyState } from "@/components/preciso/AdminShell";
 import { supabase } from "@/integrations/supabase/client";
@@ -307,10 +307,7 @@ function Works() {
         </form>
       )}
       {loading ? (
-        <div role="status" className="py-16 flex justify-center">
-          <Loader2 className="size-6 animate-spin text-accent" />
-          <span className="sr-only">Carregando obras</span>
-        </div>
+        <PanelSkeleton label="Carregando obras…" />
       ) : !projects.length ? (
         <EmptyState
           icon={HardHat}
@@ -593,3 +590,4 @@ function Works() {
     </AdminShell>
   );
 }
+import { PanelSkeleton } from "@/components/preciso/LoadingSkeleton";

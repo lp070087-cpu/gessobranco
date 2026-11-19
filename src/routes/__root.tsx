@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   Outlet,
@@ -13,6 +14,8 @@ import appCss from "../styles.css?url";
 import productCss from "../components/preciso/product.css?url";
 import { ProductMotion } from "@/components/preciso/ProductMotion";
 import { Toaster } from "@/components/ui/sonner";
+import { InstallApp } from "@/components/preciso/InstallApp";
+import { RoutePendingSkeleton } from "@/components/preciso/LoadingSkeleton";
 
 function NotFoundComponent() {
   return (
@@ -76,6 +79,8 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
+      { name: "theme-color", content: "#f7f5ef" },
+      { name: "apple-mobile-web-app-title", content: "Ouro Branco" },
       { title: "Ouro Branco — Orçamento premium para pintura, gesso e reformas" },
       {
         name: "description",
@@ -92,6 +97,9 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { name: "twitter:card", content: "summary" },
     ],
     links: [
+      { rel: "manifest", href: "/manifest.webmanifest" },
+      { rel: "icon", type: "image/png", sizes: "192x192", href: "/app-icon-192.png" },
+      { rel: "apple-touch-icon", sizes: "180x180", href: "/apple-touch-icon.png" },
       { rel: "preconnect", href: "https://fonts.googleapis.com" },
       { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
       {
@@ -130,7 +138,10 @@ function RootComponent() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <Outlet />
+      <Suspense fallback={<RoutePendingSkeleton />}>
+        <Outlet />
+      </Suspense>
+      <InstallApp />
       <ProductMotion />
       <Toaster richColors position="top-center" />
     </QueryClientProvider>

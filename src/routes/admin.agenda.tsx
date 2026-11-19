@@ -162,9 +162,7 @@ function AdminAgenda() {
         </div>
 
         {loading ? (
-          <div className="py-20 flex items-center justify-center">
-            <Loader2 className="size-6 animate-spin text-accent" />
-          </div>
+          <PanelSkeleton label="Carregando agenda…" />
         ) : filtered.length === 0 ? (
           <div className="bg-surface border border-border border-dashed rounded-2xl p-12 text-center">
             <CircleDashed className="size-10 mx-auto text-muted-foreground mb-3" />
@@ -338,3 +336,4 @@ function Lbl({ label, children }: { label: string; children: React.ReactNode }) 
     </label>
   );
 }
+import { PanelSkeleton } from "@/components/preciso/LoadingSkeleton";

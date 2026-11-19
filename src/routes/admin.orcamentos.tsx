@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Search, Loader2, FileText, Eye } from "lucide-react";
+import { Search, FileText, Eye } from "lucide-react";
 import { toast } from "sonner";
 import { AdminShell, EmptyState } from "@/components/preciso/AdminShell";
 import { supabase } from "@/integrations/supabase/client";
@@ -136,9 +136,7 @@ function AdminOrcamentos() {
         </div>
 
         {loading ? (
-          <div className="py-20 flex items-center justify-center">
-            <Loader2 className="size-6 animate-spin text-accent" />
-          </div>
+          <PanelSkeleton label="Carregando orçamentos…" />
         ) : filtered.length === 0 ? (
           <EmptyState icon={FileText} title="Nenhum orçamento" />
         ) : (
@@ -219,3 +217,4 @@ function AdminOrcamentos() {
     </AdminShell>
   );
 }
+import { PanelSkeleton } from "@/components/preciso/LoadingSkeleton";

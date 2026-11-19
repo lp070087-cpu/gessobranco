@@ -15,7 +15,7 @@ type Expense = {
 };
 
 export function OwnerExpenses({ saved }: { saved: () => void }) {
-  const [rows, setRows] = useState<Expense[]>([]);
+  const [rows, setRows] = useState<Expense[] | null>(null);
   const [revision, setRevision] = useState(0);
   const [photo, setPhoto] = useState("");
   const [ocr, setOcr] = useState("");
@@ -271,8 +271,9 @@ export function OwnerExpenses({ saved }: { saved: () => void }) {
       </section>
       <section className="panel space">
         <h2>Despesas registradas aqui</h2>
-        {!rows.length && <p className="hint">Nenhum lançamento neste painel.</p>}
-        {rows.map((item) => (
+        {!rows && !error && <PanelSkeleton label="Carregando despesas…" />}
+        {rows?.length === 0 && <p className="hint">Nenhum lançamento neste painel.</p>}
+        {rows?.map((item) => (
           <div key={item.id} className="actions space">
             <span>
               {item.description} · {item.category} · {moneyBR(item.amount)} ·{" "}
@@ -294,3 +295,4 @@ export function OwnerExpenses({ saved }: { saved: () => void }) {
     </>
   );
 }
+import { PanelSkeleton } from "@/components/preciso/LoadingSkeleton";
