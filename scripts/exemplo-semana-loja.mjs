@@ -64,13 +64,13 @@ const migrations = [
 // ---------------------------------------------------------------- Produtos (folha de estoque)
 // [chave, nome, categoria, unidade-base, unidades [nome, fator, preço], custo, estoque em 16/11]
 const products = [
-  ["gesso", "Gesso (saco)", "Gesso", "saco", [["Saco", 1, 25]], 22, 275],
+  ["gesso", "Gesso revestimento 40kg", "Gesso", "saco", [["Saco", 1, 24.99]], 22, 275],
   ["kg", "Gesso no quilo", "Gesso", "kg", [["Kg", 1, 2]], 2, 30],
   ["meio", "Meio saco de gesso", "Gesso", "meio saco", [["Meio saco", 1, 15]], 15, 10],
-  ["placa", "Placa de gesso", "Gesso", "placa", [["Placa", 1, 5]], 4.8, 75],
-  ["bloco", "Bloco de gesso", "Gesso", "bloco", [["Bloco", 1, 13]], 10.5, 475],
-  ["hidro", "Hidro", "Gesso", "un", [["Unidade", 1, null]], 23, 0],
-  ["cola", "Cola", "Materiais", "un", [["Unidade", 1, 15]], 12, 23],
+  ["placa", "Placa de gesso 65x65", "Gesso", "placa", [["Placa", 1, 5.19]], 4.8, 75],
+  ["bloco", "Bloco divisório de gesso", "Gesso", "bloco", [["Bloco", 1, 13.99]], 10.5, 475],
+  ["hidro", "Bloco hidro", "Gesso", "bloco", [["Bloco", 1, 24.99]], 23, 0],
+  ["cola", "Gesso cola 5kg", "Materiais", "saco", [["Saco", 1, 14.99]], 12, 23],
   [
     "sizal",
     "Sizal",
@@ -83,16 +83,46 @@ const products = [
     11,
     120,
   ],
-  ["arame", "Arame", "Materiais", "un", [["Unidade", 1, 35]], 28, 117],
-  ["pitao", "Pitão", "Ferragens", "un", [["Unidade", 1, null]], 30, 0],
-  ["arribite50", "Arribite 50", "Ferragens", "un", [["Unidade", 1, null]], 15, 8],
-  ["arribite100", "Arribite 100", "Ferragens", "un", [["Unidade", 1, null]], 30, 4],
+  ["arame", "Arame 1kg", "Materiais", "rolo", [["Rolo", 1, 34.99]], 28, 117],
+  [
+    "pitao",
+    "Pitão com bucha 6mm",
+    "Ferragens",
+    "pacote",
+    [
+      ["Pacote com 100", 1, 30],
+      ["Milheiro", 10, 250],
+    ],
+    30,
+    0,
+  ],
+  ["arribite50", "Rebite (pacote 50)", "Ferragens", "pacote", [["Pacote com 50", 1, null]], 15, 8],
+  [
+    "arribite100",
+    "Rebite de alumínio 4mm",
+    "Ferragens",
+    "pacote",
+    [
+      ["Pacote com 100", 1, 29.99],
+      ["Milheiro", 10, 234.99],
+    ],
+    30,
+    4,
+  ],
   ["broca", "Broca", "Ferramentas", "un", [["Unidade", 1, null]], 12, 40],
-  ["serrote", "Serrote", "Ferramentas", "un", [["Unidade", 1, 35]], 30, 5],
-  ["espatula", "Espátula", "Ferramentas", "un", [["Unidade", 1, null]], 30, 12],
-  ["carrinho", "Carrinho", "Ferramentas", "un", [["Unidade", 1, null]], 30, 3],
-  ["trena", "Trena", "Ferramentas", "un", [["Unidade", 1, null]], 15, 4],
-  ["nivel", "Nível", "Ferramentas", "un", [["Unidade", 1, null]], 240, 4],
+  ["serrote", "Serrote para gesso", "Ferramentas", "un", [["Unidade", 1, 34.99]], 30, 5],
+  ["espatula", "Espátula", "Ferramentas", "un", [["Unidade", 1, 34.99]], 30, 12],
+  ["carrinho", "Carrilho para gesso", "Ferramentas", "un", [["Unidade", 1, 34.99]], 30, 3],
+  ["trena", "Trena 5 metros", "Ferramentas", "un", [["Unidade", 1, 14.99]], 15, 4],
+  [
+    "nivel",
+    "Nível a laser 2 linhas (verde)",
+    "Ferramentas",
+    "un",
+    [["Unidade", 1, 239.99]],
+    240,
+    4,
+  ],
   ["j3x1", "Junta 3x1", "Juntas e acabamentos", "un", [["Unidade", 1, null]], 2.5, 42],
   ["j3x3", "Junta 3x3", "Juntas e acabamentos", "un", [["Unidade", 1, null]], 2.5, 40],
   ["j5x5", "Junta 5x5", "Juntas e acabamentos", "un", [["Unidade", 1, null]], 2.5, 150],
@@ -110,6 +140,33 @@ const products = [
   ["moldura", "Moldura (metro)", "Vendido por metro", "m", [["Metro", 1, 2]], 1, 0],
   ["baguete", "Baguete (metro)", "Vendido por metro", "m", [["Metro", 1, 2]], 1, 0],
   ["prancha", "Prancha (metro)", "Vendido por metro", "m", [["Metro", 1, 45]], 30, 0],
+];
+// Informações tiradas das artes de oferta da loja (só o texto, não as imagens).
+const details = {
+  placa: "Placa de gesso 65x65.",
+  bloco: "Bloco divisório de gesso. Acabamento perfeito.",
+  gesso: "Gesso revestimento, saco de 40kg.",
+  hidro: "Bloco hidro: resistente à umidade, mais leve e prático.",
+  cola: "Gesso cola, saco de 5kg.",
+  arame: "Arame de 1kg.",
+  pitao: "Pitão com bucha 6mm. Somente embalagem fechada (100 unidades ou milheiro).",
+  arribite100:
+    "Rebite de alumínio 4mm (padrão). Somente embalagem fechada (100 unidades ou milheiro).",
+  espatula: "Espátula com cabo de madeira.",
+  carrinho: "Carrilho para gesso, amarelo dourado.",
+  serrote: "Serrote para gesso.",
+  trena: "Trena de 5 metros.",
+  nivel:
+    "Nível a laser com 2 linhas verdes (vertical e horizontal). Acompanha pilhas, suporte em L, parafuso de conversão e bolsa. Preço cheio R$ 299,99.",
+};
+// Preço de atacado: [produto, a partir de quantas unidades, preço, ou perfil do cliente].
+const wholesale = [
+  ["placa", 100, 4.89],
+  ["gesso", 30, 23.99],
+  ["hidro", 20, 22.99],
+  ["cola", 10, 11.99],
+  ["arame", 10, 29.99],
+  ["bloco", 1, 11.99, "atacado"],
 ];
 // Itens com unidade diferente da principal.
 const alias = { meiosizal: ["sizal", "Meio"] };
@@ -559,7 +616,7 @@ for (const [key, name, category, base, units] of products) {
     description:
       category === "Vendido por metro"
         ? "Custo por metro de EXEMPLO. Confirmar com o dono e quanto tem em estoque."
-        : "",
+        : (details[key] ?? ""),
     category,
     base_unit: base,
     valuation_method: "fifo",
@@ -576,6 +633,18 @@ for (const [key, name, category, base, units] of products) {
   ids[key] = id;
 }
 const state = await call("commercial/state");
+for (const [key, minimum, price, profile] of wholesale) {
+  const product = state.products.find((item) => item.id === ids[key]);
+  await call("commercial/price_rule", {
+    unit_id: product.units.find((unit) => Number(unit.factor) === 1).id,
+    customer_id: null,
+    profile: profile ?? null,
+    minimum_quantity: minimum,
+    price,
+    valid_from: null,
+    valid_until: null,
+  });
+}
 const unitOf = (key) => {
   const [productKey, unitName] = alias[key] ?? [key, null];
   const product = state.products.find((item) => item.id === ids[productKey]);
@@ -616,13 +685,12 @@ function lines(items) {
   for (const [quantity, key, value] of items) {
     const { unit } = unitOf(key);
     const exact = Math.round((value / quantity) * 100) / 100;
-    const list = unit.price === null ? null : Number(unit.price);
     const push = (q, price) =>
       result.push({
         unit_id: unit.id,
         quantity: q,
         price,
-        reason: list === price ? "" : "Preço combinado no balcão (folha do dono)",
+        reason: "Preço da folha do dono",
       });
     if (Math.abs(exact * quantity - value) < 0.001) push(quantity, exact);
     else {
@@ -753,6 +821,7 @@ if (dumpFile || apply) {
   const tables = [
     "commercial_products",
     "commercial_units",
+    "commercial_price_rules",
     "commercial_suppliers",
     "commercial_cash_sessions",
     "commercial_purchases",

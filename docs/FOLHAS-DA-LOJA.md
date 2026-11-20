@@ -41,6 +41,17 @@ R$ 400, e o custo por metro de junta, moldura, baguete e prancha.
 Diferenças achadas nas folhas: na sexta 13/11 faltaram R$ 90 no caixa; na terça a folha soma
 R$ 671, mas as vendas somam R$ 670; a diária da quinta não entrou nos gastos da semana.
 
+## Produtos e preços
+
+Nomes, medidas e preços de varejo e atacado vieram das artes de oferta da loja (só o texto; as
+imagens não foram usadas). Atacado: placa 65x65 R$ 4,89 a partir de 100, gesso 40kg R$ 23,99 a
+partir de 30, bloco hidro R$ 22,99 a partir de 20, gesso cola 5kg R$ 11,99 a partir de 10, arame 1kg
+R$ 29,99 a partir de 10 e bloco divisório R$ 11,99 para cliente de perfil atacado. Rebite 4mm e
+pitão 6mm são vendidos só em embalagem fechada (100 unidades ou milheiro).
+
+Contato da loja nas artes: (81) 9.8424-4279 · Rua Coronel Waldemar Basgal, 299 e Rua Equador, 677 —
+Cajueiro Seco.
+
 ## Publicar
 
 ```sh
