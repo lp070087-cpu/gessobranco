@@ -4,6 +4,7 @@ export const companyPermissions = [
   "service_agenda",
   "service_projects",
   "finance_cfo",
+  "store_closing",
 ] as const;
 export type CompanyPermission = (typeof companyPermissions)[number];
 export type CompanyActor = {

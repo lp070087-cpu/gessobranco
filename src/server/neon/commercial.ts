@@ -393,7 +393,7 @@ export async function commercialRequest(
         sum(r.revenue-r.returned_revenue) revenue,sum(r.contribution) contribution,count(*) FILTER(WHERE r.partial) partial_sales
         FROM preciso.commercial_results r LEFT JOIN preciso.commercial_customers c ON c.id=r.customer_id
         WHERE (r.created_at AT TIME ZONE 'America/Recife')::date BETWEEN ${start}::date AND ${end}::date GROUP BY c.id,c.name) v),
-      'operating_expenses',(SELECT COALESCE(sum(amount),0) FROM preciso.commercial_expenses WHERE due_on BETWEEN ${start}::date AND ${end}::date),
+      'operating_expenses',(SELECT COALESCE(sum(amount),0) FROM preciso.commercial_expenses WHERE category='despesa' AND due_on BETWEEN ${start}::date AND ${end}::date),
       'cash_out',(SELECT COALESCE(sum(amount),0) FROM preciso.commercial_expenses WHERE paid_on BETWEEN ${start}::date AND ${end}::date)+
         (SELECT COALESCE(sum(amount),0) FROM preciso.commercial_purchase_payments WHERE (created_at AT TIME ZONE 'America/Recife')::date BETWEEN ${start}::date AND ${end}::date),
       'by_product',(SELECT COALESCE(jsonb_agg(v),'[]') FROM (SELECT i.product_name,sum(i.revenue-round(i.price*i.returned,2)) revenue,

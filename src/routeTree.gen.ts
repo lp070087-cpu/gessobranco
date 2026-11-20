@@ -37,6 +37,7 @@ import { Route as AdminComercialRouteImport } from './routes/admin.comercial'
 import { Route as AdminConfiguracoesRouteImport } from './routes/admin.configuracoes'
 import { Route as AdminEmpresasRouteImport } from './routes/admin.empresas'
 import { Route as AdminFinanceiroRouteImport } from './routes/admin.financeiro'
+import { Route as AdminFolhaRouteImport } from './routes/admin.folha'
 import { Route as AdminGestaoServicosRouteImport } from './routes/admin.gestao-servicos'
 import { Route as AdminNotificacoesRouteImport } from './routes/admin.notificacoes'
 import { Route as AdminObrasRouteImport } from './routes/admin.obras'
@@ -191,6 +192,11 @@ const AdminFinanceiroRoute = AdminFinanceiroRouteImport.update({
   path: '/financeiro',
   getParentRoute: () => AdminRoute,
 } as any)
+const AdminFolhaRoute = AdminFolhaRouteImport.update({
+  id: '/folha',
+  path: '/folha',
+  getParentRoute: () => AdminRoute,
+} as any)
 const AdminGestaoServicosRoute = AdminGestaoServicosRouteImport.update({
   id: '/gestao-servicos',
   path: '/gestao-servicos',
@@ -289,6 +295,7 @@ export interface FileRoutesByFullPath {
   '/admin/configuracoes': typeof AdminConfiguracoesRoute
   '/admin/empresas': typeof AdminEmpresasRoute
   '/admin/financeiro': typeof AdminFinanceiroRoute
+  '/admin/folha': typeof AdminFolhaRoute
   '/admin/gestao-servicos': typeof AdminGestaoServicosRoute
   '/admin/notificacoes': typeof AdminNotificacoesRoute
   '/admin/obras': typeof AdminObrasRoute
@@ -330,6 +337,7 @@ export interface FileRoutesByTo {
   '/admin/configuracoes': typeof AdminConfiguracoesRoute
   '/admin/empresas': typeof AdminEmpresasRoute
   '/admin/financeiro': typeof AdminFinanceiroRoute
+  '/admin/folha': typeof AdminFolhaRoute
   '/admin/gestao-servicos': typeof AdminGestaoServicosRoute
   '/admin/notificacoes': typeof AdminNotificacoesRoute
   '/admin/obras': typeof AdminObrasRoute
@@ -375,6 +383,7 @@ export interface FileRoutesById {
   '/admin/configuracoes': typeof AdminConfiguracoesRoute
   '/admin/empresas': typeof AdminEmpresasRoute
   '/admin/financeiro': typeof AdminFinanceiroRoute
+  '/admin/folha': typeof AdminFolhaRoute
   '/admin/gestao-servicos': typeof AdminGestaoServicosRoute
   '/admin/notificacoes': typeof AdminNotificacoesRoute
   '/admin/obras': typeof AdminObrasRoute
@@ -420,6 +429,7 @@ export interface FileRouteTypes {
     | '/admin/configuracoes'
     | '/admin/empresas'
     | '/admin/financeiro'
+    | '/admin/folha'
     | '/admin/gestao-servicos'
     | '/admin/notificacoes'
     | '/admin/obras'
@@ -461,6 +471,7 @@ export interface FileRouteTypes {
     | '/admin/configuracoes'
     | '/admin/empresas'
     | '/admin/financeiro'
+    | '/admin/folha'
     | '/admin/gestao-servicos'
     | '/admin/notificacoes'
     | '/admin/obras'
@@ -505,6 +516,7 @@ export interface FileRouteTypes {
     | '/admin/configuracoes'
     | '/admin/empresas'
     | '/admin/financeiro'
+    | '/admin/folha'
     | '/admin/gestao-servicos'
     | '/admin/notificacoes'
     | '/admin/obras'
@@ -735,6 +747,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminFinanceiroRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/admin/folha': {
+      id: '/admin/folha'
+      path: '/folha'
+      fullPath: '/admin/folha'
+      preLoaderRoute: typeof AdminFolhaRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/admin/gestao-servicos': {
       id: '/admin/gestao-servicos'
       path: '/gestao-servicos'
@@ -881,6 +900,7 @@ interface AdminRouteChildren {
   AdminConfiguracoesRoute: typeof AdminConfiguracoesRoute
   AdminEmpresasRoute: typeof AdminEmpresasRoute
   AdminFinanceiroRoute: typeof AdminFinanceiroRoute
+  AdminFolhaRoute: typeof AdminFolhaRoute
   AdminGestaoServicosRoute: typeof AdminGestaoServicosRoute
   AdminNotificacoesRoute: typeof AdminNotificacoesRoute
   AdminObrasRoute: typeof AdminObrasRoute
@@ -899,6 +919,7 @@ const AdminRouteChildren: AdminRouteChildren = {
   AdminConfiguracoesRoute: AdminConfiguracoesRoute,
   AdminEmpresasRoute: AdminEmpresasRoute,
   AdminFinanceiroRoute: AdminFinanceiroRoute,
+  AdminFolhaRoute: AdminFolhaRoute,
   AdminGestaoServicosRoute: AdminGestaoServicosRoute,
   AdminNotificacoesRoute: AdminNotificacoesRoute,
   AdminObrasRoute: AdminObrasRoute,

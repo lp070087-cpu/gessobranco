@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { createFileRoute } from "@tanstack/react-router";
-import { AccountLayout, ManagementLinks } from "@/components/preciso/AccountMenu";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { AccountLayout, ManagementMenu } from "@/components/preciso/AccountMenu";
 import { CompanySession } from "@/components/preciso/CompanySession";
 import { hasCompanyPermission } from "@/lib/company-permissions";
 import { commercialFetch, localDay, moneyBR } from "@/lib/commercial-client";
@@ -16,9 +16,19 @@ import { readDocument } from "@/lib/document-import";
 import { downloadSpreadsheet } from "@/lib/spreadsheet-export";
 import { OwnerExpenses } from "@/components/preciso/OwnerExpenses";
 
+const cfoSlugs = {
+  importar: "Importar extrato",
+  comparar: "Comparar",
+  historico: "Histórico",
+  despesas: "Despesas",
+} as const;
+type CfoSlug = keyof typeof cfoSlugs;
+type CfoSection = "Visão geral" | (typeof cfoSlugs)[CfoSlug];
 export const Route = createFileRoute("/admin/cfo")({
-  validateSearch: (search: Record<string, unknown>): { secao?: "despesas" } =>
-    search.secao === "despesas" ? { secao: "despesas" } : {},
+  validateSearch: (search: Record<string, unknown>): { secao?: CfoSlug } =>
+    typeof search.secao === "string" && search.secao in cfoSlugs
+      ? { secao: search.secao as CfoSlug }
+      : {},
   head: () => ({ meta: [{ title: "CFO Financeiro — Ouro Branco" }] }),
   component: () => (
     <CompanySession
@@ -76,19 +86,17 @@ const stamp = (stamp: string) =>
   new Date(stamp).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
 const statuses = { running: "Em processamento", succeeded: "Concluído", failed: "Falhou" };
 
-const cfoSections = [
-  "Visão geral",
-  "Importar extrato",
-  "Comparar",
-  "Histórico",
-  "Despesas",
-] as const;
-
 function Cfo({ user }: { user: CompanyActor }) {
   const requested = Route.useSearch().secao;
-  const [section, setSection] = useState<(typeof cfoSections)[number]>(
-    requested === "despesas" && user.role === "admin" ? "Despesas" : "Visão geral",
-  );
+  const navigate = useNavigate();
+  const section: CfoSection =
+    requested && (requested !== "despesas" || user.role === "admin")
+      ? cfoSlugs[requested]
+      : "Visão geral";
+  const setSection = (next: CfoSection) => {
+    const slug = (Object.keys(cfoSlugs) as CfoSlug[]).find((key) => cfoSlugs[key] === next);
+    void navigate({ to: "/admin/cfo", search: slug ? { secao: slug } : {} });
+  };
   const [range, setRange] = useState(() => {
     const end = localDay();
     return { start: end.slice(0, 7) + "-01", end };
@@ -201,26 +209,7 @@ function Cfo({ user }: { user: CompanyActor }) {
   const snapshot = live?.start === start && live.end === end ? live.snapshot : null;
   const report = selected?.report;
   return (
-    <AccountLayout
-      label="Menu do CFO"
-      menu={
-        <>
-          {cfoSections
-            .filter((item) => item !== "Despesas" || user.role === "admin")
-            .map((item) => (
-              <button
-                key={item}
-                type="button"
-                aria-current={section === item ? "page" : undefined}
-                onClick={() => setSection(item)}
-              >
-                {item}
-              </button>
-            ))}
-          <ManagementLinks user={user} />
-        </>
-      }
-    >
+    <AccountLayout label="Menu do CFO" menu={<ManagementMenu user={user} />}>
       {error && (
         <p className="notice error" role="alert">
           {error}
@@ -236,8 +225,9 @@ function Cfo({ user }: { user: CompanyActor }) {
           <section className="panel">
             <h2>Visão financeira da Loja e dos Serviços</h2>
             <p className="hint">
-              O fechamento automático analisa o mês anterior no dia 5, na faixa das 9h no horário de
-              Brasília.
+              Fechamento automático todo dia às 23h (horário de Brasília): o dia, no sábado também a
+              semana de segunda a sábado e, no dia 5, o mês anterior. Também dá para executar
+              manualmente aqui quando quiser.
             </p>
             <form
               className="space"

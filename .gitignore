@@ -42,3 +42,4 @@ dist-ssr
 coverage/
 test-results/
 playwright-report/
+.exemplo-pglite/

@@ -27,6 +27,7 @@ test("real HTTP handlers enforce sessions, admin roles, input validation and ori
       "0006_purchase_deliveries",
       "0007_customer_documents",
       "0008_customer_worksites",
+      "0009_folhas_da_loja",
     ])
       await db.exec(
         await readFile(new URL(`../drizzle/${migration}.sql`, import.meta.url), "utf8"),
@@ -789,16 +790,28 @@ test("real HTTP handlers enforce sessions, admin roles, input validation and ori
         new Date(now),
       );
     assert.equal((await cron("incorreto", "2026-11-05T12:00:00Z")).status, 401);
-    assert.equal(
-      (await (await cron(process.env.CRON_SECRET, "2026-11-05T01:00:00Z")).json()).status,
-      "outside_schedule",
-    );
+    // Todo dia fecha o dia; no dia 5 também analisa o mês anterior.
     const scheduled = await (await cron(process.env.CRON_SECRET, "2026-11-05T12:00:00Z")).json();
-    assert.equal(scheduled.status, "succeeded");
-    assert.deepEqual(scheduled.report.cash, recalculated.report.cash);
+    assert.deepEqual(scheduled.closings, ["dia"]);
+    assert.deepEqual(scheduled.runs, ["succeeded", "succeeded"]);
+    const monthly = await db.query(
+      "SELECT report FROM preciso.cfo_runs WHERE request_key='cron:2026-10-01'",
+    );
+    assert.deepEqual(monthly.rows[0].report.cash, recalculated.report.cash);
     const repeated = await (await cron(process.env.CRON_SECRET, "2026-11-05T12:10:00Z")).json();
-    assert.equal(repeated.id, scheduled.id);
-    assert.equal(repeated.reused, true);
+    assert.deepEqual(repeated.runs, ["succeeded", "succeeded"]);
+    // Sábado 07/11 às 23h de Brasília: fecha o dia e a semana de segunda a sábado.
+    const saturday = await (await cron(process.env.CRON_SECRET, "2026-11-08T02:00:00Z")).json();
+    assert.deepEqual(saturday.closings, ["dia", "semana"]);
+    await cron(process.env.CRON_SECRET, "2026-11-08T02:20:00Z");
+    const closingRows = await db.query(
+      "SELECT period,start_on::text,end_on::text,source FROM preciso.commercial_closings ORDER BY start_on,period",
+    );
+    assert.deepEqual(closingRows.rows, [
+      { period: "semana", start_on: "2026-11-02", end_on: "2026-11-07", source: "automatico" },
+      { period: "dia", start_on: "2026-11-05", end_on: "2026-11-05", source: "automatico" },
+      { period: "dia", start_on: "2026-11-07", end_on: "2026-11-07", source: "automatico" },
+    ]);
     const retryRange = { ...rangeCfo, request_key: randomUUID() };
     await db.exec("ALTER TABLE preciso.cfo_entries RENAME TO cfo_entries_unavailable");
     const failed = await request("cfo/run", token, retryRange);

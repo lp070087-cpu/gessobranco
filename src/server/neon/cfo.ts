@@ -5,6 +5,7 @@ import { normalizeStatementText, priorMonth, reviewTypes } from "@/lib/cfo";
 import type { Report } from "@/lib/commercial-client";
 import { database } from "./db";
 import { commercialRequest } from "./commercial";
+import { automaticClosings } from "./store";
 
 const hash = (value: string) => createHash("sha256").update(value).digest("hex");
 const date = z.string().date();
@@ -255,14 +256,35 @@ export async function scheduledCfo(request: Request, now = new Date()) {
     !timingSafeEqual(Buffer.from(hash(authorization)), Buffer.from(hash("Bearer " + secret)))
   )
     return json({ error: "Não autorizado." }, 401);
-  const schedule = new Intl.DateTimeFormat("en-US", {
+  // Roda todo dia no fim do expediente (23h de Brasília): fecha o dia; no sábado, a semana
+  // de segunda a sábado; no dia 5, também o mês anterior.
+  const { today, weekday, monthDay } = scheduleDay(now);
+  const closings = await automaticClosings(today, weekday);
+  const runs = [await run(today, today, "cron:dia:" + today, null, "cron")];
+  if (weekday === 6) {
+    const monday = new Date(Date.parse(today) - 5 * 86_400_000).toISOString().slice(0, 10);
+    runs.push(await run(monday, today, "cron:semana:" + monday, null, "cron"));
+  }
+  if (monthDay === 5) {
+    const { start, end } = priorMonth(now);
+    runs.push(await run(start, end, "cron:" + start, null, "cron"));
+  }
+  const failed = runs.some((result) => result.status === "failed");
+  return json({ closings, runs: runs.map((result) => result.status) }, failed ? 500 : 200);
+}
+
+export function scheduleDay(now = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: "America/Sao_Paulo",
-    day: "numeric",
-  }).format(now);
-  if (schedule !== "5") return json({ status: "outside_schedule" });
-  const { start, end } = priorMonth(now);
-  const result = await run(start, end, "cron:" + start, null, "cron");
-  return json(result, result.status === "failed" ? 500 : 200);
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    weekday: "short",
+  }).formatToParts(now);
+  const value = (type: string) => parts.find((part) => part.type === type)?.value ?? "";
+  const today = `${value("year")}-${value("month")}-${value("day")}`;
+  const weekday = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(value("weekday"));
+  return { today, weekday, monthDay: Number(value("day")) };
 }
 
 export async function cfoRequest(

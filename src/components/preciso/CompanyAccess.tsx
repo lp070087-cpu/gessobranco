@@ -14,6 +14,7 @@ const labels: Record<CompanyPermission, string> = {
   service_agenda: "Agendamentos e visitas",
   service_projects: "Serviços em andamento",
   finance_cfo: "CFO financeiro",
+  store_closing: "Folha do dia, caixa e fechamento (secretária)",
 };
 export function CompanyAccess({ customers }: { customers: Customer[] }) {
   const [email, setEmail] = useState(""),

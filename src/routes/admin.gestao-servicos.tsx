@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
-import { createFileRoute } from "@tanstack/react-router";
-import { AccountLayout, ManagementLinks } from "@/components/preciso/AccountMenu";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { AccountLayout, ManagementMenu } from "@/components/preciso/AccountMenu";
 import { CompanySession } from "@/components/preciso/CompanySession";
 import { CompanyRequests } from "@/components/preciso/CompanyRequests";
 import { SERVICES } from "@/components/preciso/services";
@@ -13,16 +13,19 @@ import {
 } from "@/lib/company-permissions";
 
 const sections = [
-  ["Orçamentos e clientes", "service_requests"],
-  ["Catálogo e cálculo", "service_catalogue"],
-  ["Agendamentos", "service_agenda"],
-  ["Serviços em andamento", "service_projects"],
+  ["Orçamentos e clientes", "service_requests", undefined],
+  ["Catálogo e cálculo", "service_catalogue", "catalogo"],
+  ["Agendamentos", "service_agenda", "agenda"],
+  ["Serviços em andamento", "service_projects", "andamento"],
 ] as const;
+type ServiceSlug = "catalogo" | "agenda" | "andamento";
 const canEnter = (user: CompanyActor) =>
   sections.some(([, permission]) => hasCompanyPermission(user, permission));
 export const Route = createFileRoute("/admin/gestao-servicos")({
-  validateSearch: (search: Record<string, unknown>): { secao?: "catalogo" } =>
-    search.secao === "catalogo" ? { secao: "catalogo" } : {},
+  validateSearch: (search: Record<string, unknown>): { secao?: ServiceSlug } =>
+    search.secao === "catalogo" || search.secao === "agenda" || search.secao === "andamento"
+      ? { secao: search.secao }
+      : {},
   head: () => ({ meta: [{ title: "Gestão de Serviços — Ouro Branco" }] }),
   component: () => (
     <CompanySession title="Gestão de Serviços" allowed={canEnter}>
@@ -33,30 +36,15 @@ export const Route = createFileRoute("/admin/gestao-servicos")({
 
 function ServiceArea({ user }: { user: CompanyActor }) {
   const visible = sections.filter(([, permission]) => hasCompanyPermission(user, permission));
-  const requestedCatalogue = Route.useSearch().secao === "catalogo";
-  const [selected, setSelected] = useState<CompanyPermission>(
-    requestedCatalogue && hasCompanyPermission(user, "service_catalogue")
-      ? "service_catalogue"
-      : visible[0][1],
-  );
+  const requested = Route.useSearch().secao;
+  const navigate = useNavigate();
+  const match = visible.find(([, , slug]) => slug === requested);
+  const selected: CompanyPermission = (match ?? visible[0])[1];
+  useEffect(() => {
+    if (requested && !match) void navigate({ to: "/admin/gestao-servicos", search: {} });
+  }, [requested, match, navigate]);
   return (
-    <AccountLayout
-      label="Menu de serviços"
-      menu={
-        <>
-          {visible.map(([label, permission]) => (
-            <button
-              key={permission}
-              aria-current={selected === permission ? "page" : undefined}
-              onClick={() => setSelected(permission)}
-            >
-              {label}
-            </button>
-          ))}
-          <ManagementLinks user={user} />
-        </>
-      }
-    >
+    <AccountLayout label="Menu de serviços" menu={<ManagementMenu user={user} />}>
       {selected === "service_requests" && (
         <CompanyRequests
           kind="service"

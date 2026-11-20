@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { AccountLayout, ManagementLinks } from "@/components/preciso/AccountMenu";
+import { AccountLayout, ManagementMenu } from "@/components/preciso/AccountMenu";
 import { CompanyRequests } from "@/components/preciso/CompanyRequests";
 import { CompanySession } from "@/components/preciso/CompanySession";
 import { BusinessSettingsForm } from "@/components/preciso/BusinessSettings";
@@ -20,7 +20,7 @@ function Administration() {
       allowed={(user) => hasCompanyPermission(user, "service_requests")}
     >
       {(user) => (
-        <AccountLayout label="Menu da administração" menu={<ManagementLinks user={user} />}>
+        <AccountLayout label="Menu da gestão" menu={<ManagementMenu user={user} />}>
           {settings && user.role === "admin" ? (
             <BusinessSettingsForm />
           ) : (

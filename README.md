@@ -11,6 +11,7 @@ npm run dev
 
 Site: `/`. Gestão comercial: `/admin/comercial`. Configuração do Neon, regras de estoque,
 testes e pendências de implantação: [Operação comercial](docs/OPERACAO-COMERCIAL.md).
+Folha do dia, caixa, fechamentos e conferência de entregas: [Folhas da loja](docs/FOLHAS-DA-LOJA.md).
 
 ```sh
 npm test

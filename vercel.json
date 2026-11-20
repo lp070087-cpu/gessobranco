@@ -2,5 +2,5 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "tanstack-start",
   "buildCommand": "npm run lint && npm run typecheck && npm test && npm run build",
-  "crons": [{ "path": "/api/neon/cron/cfo", "schedule": "0 12 5 * *" }]
+  "crons": [{ "path": "/api/neon/cron/cfo", "schedule": "0 2 * * *" }]
 }

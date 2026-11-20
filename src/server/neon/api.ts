@@ -7,6 +7,7 @@ import { projects, quotes, sessions, users } from "./schema";
 import { commercialRequest, publicCatalogue } from "./commercial";
 import { companyRequests, createCompanyRequest } from "./company-requests";
 import { cfoRequest, scheduledCfo } from "./cfo";
+import { storeRequest } from "./store";
 import { portal } from "./portal";
 import { normalizeDocument, validDocument } from "@/lib/customer-document";
 import {
@@ -664,6 +665,8 @@ export async function handleNeonRequest(request: Request, now = new Date()): Pro
           : json({ error: "Solicitação não encontrada." }, 404);
       }
     }
+    if (path.startsWith("store/"))
+      return await storeRequest(request, path, user, () => body(request));
     if (path.startsWith("commercial/"))
       return await commercialRequest(request, path, user, () => body(request));
     if (path === "admin/services" && request.method === "GET") {
