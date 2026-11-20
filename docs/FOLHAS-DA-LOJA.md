@@ -2,14 +2,14 @@
 
 Telas que repetem o controle que o dono fazia no papel. Todas ficam no menu lateral, grupo **Loja**.
 
-| Tela | Endereço | Quem usa |
-| --- | --- | --- |
-| Folha do dia | `/admin/folha` | dono e secretária |
-| Folha da semana (segunda a sábado) | `/admin/folha?secao=semana` | dono e secretária |
-| Fechamentos | `/admin/folha?secao=fechamentos` | dono e secretária |
-| Fiados | `/admin/folha?secao=fiados` | dono |
-| Débitos da empresa | `/admin/folha?secao=debitos` | dono |
-| Conferir entregas | `/admin/folha?secao=entregas` | dono |
+| Tela                               | Endereço                         | Quem usa          |
+| ---------------------------------- | -------------------------------- | ----------------- |
+| Folha do dia                       | `/admin/folha`                   | dono e secretária |
+| Folha da semana (segunda a sábado) | `/admin/folha?secao=semana`      | dono e secretária |
+| Fechamentos                        | `/admin/folha?secao=fechamentos` | dono e secretária |
+| Fiados                             | `/admin/folha?secao=fiados`      | dono              |
+| Débitos da empresa                 | `/admin/folha?secao=debitos`     | dono              |
+| Conferir entregas                  | `/admin/folha?secao=entregas`    | dono              |
 
 A secretária precisa de uma conta de cliente com a permissão **"Folha do dia, caixa e
 fechamento (secretária)"**, dada em Loja › Clientes › Acessos da equipe.
