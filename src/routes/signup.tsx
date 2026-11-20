@@ -235,9 +235,16 @@ function SignupPage() {
         <Button
           type="submit"
           disabled={loading}
-          className="h-12 w-full bg-gradient-to-r from-gold to-[oklch(0.82_0.12_85)] text-primary-foreground font-semibold tracking-wide shadow-[0_15px_40px_-15px_oklch(0.74_0.115_78/0.7)] hover:opacity-95 transition-all"
+          className="h-12 w-full font-semibold tracking-wide disabled:opacity-80"
         >
-          {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Criar conta"}
+          {loading ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+              Criando conta…
+            </>
+          ) : (
+            "Criar conta"
+          )}
         </Button>
 
         <p className="text-center text-sm text-muted-foreground">

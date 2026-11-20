@@ -10,11 +10,14 @@ import { Label } from "@/components/ui/label";
 import { AuthShell } from "@/components/preciso/AuthShell";
 
 export const Route = createFileRoute("/forgot-password")({
+  validateSearch: (search: Record<string, unknown>): { acesso?: "gestao" } =>
+    search.acesso === "gestao" ? { acesso: "gestao" } : {},
   head: () => ({ meta: [{ title: "Recuperar senha — Ouro Branco" }] }),
   component: ForgotPage,
 });
 
 function ForgotPage() {
+  const { acesso } = Route.useSearch();
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
@@ -51,7 +54,7 @@ function ForgotPage() {
           Verifique sua caixa de entrada em{" "}
           <span className="text-foreground font-medium">{email}</span> e siga as instruções.
           <div className="mt-6">
-            <Link to="/login" className="text-gold hover:underline">
+            <Link to="/login" search={{ acesso }} className="text-gold hover:underline">
               Voltar para entrar
             </Link>
           </div>
@@ -72,12 +75,19 @@ function ForgotPage() {
           <Button
             type="submit"
             disabled={loading}
-            className="h-12 w-full bg-gradient-to-r from-gold to-[oklch(0.82_0.12_85)] text-primary-foreground font-semibold"
+            className="h-12 w-full font-semibold disabled:opacity-80"
           >
-            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Enviar link"}
+            {loading ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                Enviando…
+              </>
+            ) : (
+              "Enviar link"
+            )}
           </Button>
           <p className="text-center text-sm text-muted-foreground">
-            <Link to="/login" className="text-gold hover:underline">
+            <Link to="/login" search={{ acesso }} className="text-gold hover:underline">
               Voltar para entrar
             </Link>
           </p>

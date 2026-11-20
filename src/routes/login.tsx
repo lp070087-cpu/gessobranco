@@ -169,7 +169,11 @@ function LoginPage() {
             >
               Senha
             </Label>
-            <Link to="/forgot-password" className="text-xs text-gold hover:underline">
+            <Link
+              to="/forgot-password"
+              search={{ acesso }}
+              className="text-xs text-gold hover:underline"
+            >
               Esqueci minha senha
             </Link>
           </div>
@@ -209,9 +213,16 @@ function LoginPage() {
         <Button
           type="submit"
           disabled={loading}
-          className="h-12 w-full bg-gradient-to-r from-gold to-[oklch(0.82_0.12_85)] text-primary-foreground font-semibold tracking-wide shadow-[0_15px_40px_-15px_oklch(0.74_0.115_78/0.7)] hover:opacity-95 transition-all"
+          className="h-12 w-full font-semibold tracking-wide disabled:opacity-80"
         >
-          {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Entrar"}
+          {loading ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+              Entrando…
+            </>
+          ) : (
+            "Entrar"
+          )}
         </Button>
 
         {!management && (

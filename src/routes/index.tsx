@@ -305,21 +305,24 @@ function Index() {
             </div>
           </details>
           <p className="editorial-caption">Imagens ilustrativas dos tipos de acabamento.</p>
-          <div className="editorial-maintenance" data-reveal>
-            <h3>Forro mineral e elétrica</h3>
-            <p>
-              Se a reforma inclui forro mineral ou serviços de elétrica, informe no pedido de
-              orçamento para a equipe avaliar o escopo junto com os acabamentos.
-            </p>
-            <h3>Umidade, mofo ou rachaduras?</h3>
-            <p>
-              Ao solicitar uma avaliação, informe se há goteiras, manchas no teto, mofo, reboco
-              solto ou rachaduras. A indicação de reparo, acabamento ou gesso impermeável depende da
-              avaliação técnica da causa e das condições do local.
-            </p>
+          <div className="editorial-service-notes" data-reveal>
+            <div className="editorial-service-note">
+              <h3>Forro mineral e elétrica</h3>
+              <p>
+                Inclua a instalação de forro mineral ou os serviços elétricos no orçamento da sua
+                reforma, junto com os acabamentos.
+              </p>
+            </div>
+            <div className="editorial-service-note">
+              <h3>Reparos e umidade</h3>
+              <p>
+                Informe se há goteiras, manchas no teto, mofo, reboco solto ou rachaduras. A equipe
+                avalia a causa antes de recomendar reparos ou indicar gesso impermeável.
+              </p>
+            </div>
             <button
               type="button"
-              className="editorial-text-link"
+              className="editorial-button"
               onClick={() => setRequestService(true)}
             >
               Solicitar orçamento de serviços <ArrowUpRight size={17} aria-hidden="true" />
