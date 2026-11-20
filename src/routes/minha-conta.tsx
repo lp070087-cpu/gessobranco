@@ -4,6 +4,7 @@ import { Building2, CalendarDays, ClipboardList, Package, Settings } from "lucid
 import { AccountLayout, hasManagementAccess } from "@/components/preciso/AccountMenu";
 import { CustomerBusiness, type BusinessData } from "@/components/preciso/CustomerBusiness";
 import { CompanySession } from "@/components/preciso/CompanySession";
+import { clearVisitDraft, readVisitDraft, type VisitDraft } from "@/lib/visit-draft";
 import { commercialFetch, moneyBR, quantityBR } from "@/lib/commercial-client";
 import type { CompanyActor } from "@/lib/company-permissions";
 import { measuredArea } from "@/lib/estimate";
@@ -711,7 +712,9 @@ function PublishedQuote({ id }: { id: string }) {
 function Appointments() {
   const { data, error, reload } = usePortal<Appointment[]>("portal/appointments");
   const [failure, setFailure] = useState(""),
-    [busy, setBusy] = useState(false);
+    [busy, setBusy] = useState(false),
+    [draft, setDraft] = useState<VisitDraft | null>(null);
+  useEffect(() => setDraft(readVisitDraft()), []);
   async function request(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (busy) return;
@@ -725,8 +728,11 @@ function Appointments() {
         scheduled_at: field(values, "date") + ":00-03:00",
         address: field(values, "address"),
         notes: field(values, "notes"),
+        photos: draft?.photos ?? [],
       });
       form.reset();
+      clearVisitDraft();
+      setDraft(null);
       reload();
     } catch (error) {
       setFailure(error instanceof Error ? error.message : "Não foi possível solicitar a visita.");
@@ -756,8 +762,38 @@ function Appointments() {
           </label>
           <label>
             Observações
-            <textarea name="notes" maxLength={5000} />
+            <textarea
+              key={draft ? "com-resumo" : "vazio"}
+              name="notes"
+              maxLength={5000}
+              rows={draft ? 6 : 3}
+              defaultValue={draft ? draft.summary + "\n\n" : ""}
+            />
           </label>
+          {!!draft?.photos.length && (
+            <div className="visit-photos">
+              <p>Fotos do local que vão junto ({draft.photos.length})</p>
+              <div>
+                {draft.photos.map((photo, index) => (
+                  <figure key={index}>
+                    <img src={photo} alt={`Foto ${index + 1} do local`} />
+                    <button
+                      type="button"
+                      aria-label={`Tirar foto ${index + 1}`}
+                      onClick={() =>
+                        setDraft({
+                          ...draft,
+                          photos: draft.photos.filter((_, item) => item !== index),
+                        })
+                      }
+                    >
+                      ×
+                    </button>
+                  </figure>
+                ))}
+              </div>
+            </div>
+          )}
           {failure && (
             <p className="notice error" role="alert">
               {failure}

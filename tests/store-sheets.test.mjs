@@ -319,6 +319,47 @@ test("folha do dia, retiradas, fechamentos e conferência de entrega", async () 
       current: "Senha-de-teste-12345",
       next: "Nova-senha-12345",
     });
+
+    // Pedido de visita com resumo do simulador e fotos.
+    const jpeg =
+      "data:image/jpeg;base64," +
+      Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 16, 74, 70, 73, 70, 0, 1, 0xff, 0xd9]).toString(
+        "base64",
+      );
+    const amanha = new Date(Date.now() + 86400000).toISOString();
+    const visitResponse = await handleNeonRequest(
+      new Request("http://ouro.test/api/neon/appointments", {
+        method: "POST",
+        headers: {
+          Cookie: `preciso_session=${owner}`,
+          "Content-Type": "application/json",
+          Origin: "http://ouro.test",
+        },
+        body: JSON.stringify({
+          kind: "visit",
+          scheduled_at: amanha,
+          address: "Rua de exemplo, 10",
+          notes: "Tipo: Um cômodo\nQual cômodo: Quarto",
+          photos: [jpeg, jpeg],
+        }),
+      }),
+    );
+    assert.equal(visitResponse.status, 201, await visitResponse.clone().text());
+    const visit = await visitResponse.json();
+    assert.equal(visit.photos, 2);
+    const photo = await handleNeonRequest(
+      new Request(`http://ouro.test/api/neon/appointments/${visit.id}/photos/1`, {
+        headers: { Cookie: `preciso_session=${owner}` },
+      }),
+    );
+    assert.equal(photo.status, 200);
+    assert.equal(photo.headers.get("content-type"), "image/jpeg");
+    const strange = await handleNeonRequest(
+      new Request(`http://ouro.test/api/neon/appointments/${visit.id}/photos/1`, {
+        headers: { Cookie: `preciso_session=${secretary}` },
+      }),
+    );
+    assert.equal(strange.status, 404);
   } finally {
     if (previousUrl === undefined) delete process.env.DATABASE_URL;
     else process.env.DATABASE_URL = previousUrl;

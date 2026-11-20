@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
-import { AlertCircle, ArrowRight, Building2, Ruler } from "lucide-react";
+import { useEffect, useMemo, useState, type ChangeEvent } from "react";
+import { AlertCircle, ArrowRight, Building2, Camera, Minus, Plus, Ruler, X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { ScheduleDialog } from "./ScheduleDialog";
 import { estimateProject, measuredArea } from "@/lib/estimate";
 import { commercialFetch } from "@/lib/commercial-client";
+import { MAX_PHOTOS, saveVisitDraft, shrinkPhoto } from "@/lib/visit-draft";
 
 type PriceService = {
   id: string;
@@ -13,12 +14,181 @@ type PriceService = {
   billing_unit?: string;
   unit?: string;
 };
+type Scope = "ambiente" | "casa" | "apartamento" | "predio" | "comercial" | "fachada";
+type Count = { key: string; label: string; short: string; start: number; min: number };
+type ScopeConfig = {
+  label: string;
+  counts: Count[];
+  placeTitle: string;
+  places: string[];
+  single?: boolean;
+  whole?: string;
+  works: string[];
+  measures: boolean;
+  approxArea: boolean;
+  photos: boolean;
+  note: string;
+};
+const WORKS = [
+  "Forro / teto",
+  "Sanca",
+  "Parede ou divisória",
+  "Moldura e roda-teto",
+  "Reparo ou reforma",
+  "Luz embutida",
+];
+const ROOMS = [
+  "Sala",
+  "Quartos",
+  "Cozinha",
+  "Banheiros",
+  "Varanda",
+  "Corredor",
+  "Área de serviço",
+  "Garagem",
+];
+const SCOPES: Record<Scope, ScopeConfig> = {
+  ambiente: {
+    label: "Um cômodo ou detalhe",
+    counts: [],
+    placeTitle: "Qual cômodo?",
+    places: [
+      "Sala",
+      "Quarto",
+      "Cozinha",
+      "Banheiro",
+      "Varanda",
+      "Corredor",
+      "Área de serviço",
+      "Garagem",
+      "Outro",
+    ],
+    single: true,
+    works: WORKS,
+    measures: true,
+    approxArea: false,
+    photos: true,
+    note: "Mande fotos do local: o profissional já chega sabendo o que vai encontrar.",
+  },
+  casa: {
+    label: "Casa completa",
+    counts: [
+      { key: "comodos", label: "Quantos cômodos tem a casa?", short: "Cômodos", start: 5, min: 1 },
+    ],
+    placeTitle: "Onde vai ser o serviço?",
+    places: ROOMS,
+    whole: "Casa toda",
+    works: WORKS,
+    measures: false,
+    approxArea: true,
+    photos: false,
+    note: "Casa completa não precisa de foto nem de medida: na visita o profissional vê tudo no local.",
+  },
+  apartamento: {
+    label: "Apartamento",
+    counts: [
+      {
+        key: "comodos",
+        label: "Quantos cômodos tem o apartamento?",
+        short: "Cômodos",
+        start: 4,
+        min: 1,
+      },
+    ],
+    placeTitle: "Onde vai ser o serviço?",
+    places: ROOMS.filter((item) => item !== "Garagem"),
+    whole: "Apartamento todo",
+    works: WORKS,
+    measures: false,
+    approxArea: true,
+    photos: false,
+    note: "Não precisa de foto nem de medida: na visita o profissional vê tudo no local.",
+  },
+  predio: {
+    label: "Edifício ou condomínio",
+    counts: [
+      { key: "andares", label: "Quantos andares?", short: "Andares", start: 4, min: 1 },
+      {
+        key: "unidades",
+        label: "Quantos apartamentos ou salas?",
+        short: "Unidades",
+        start: 8,
+        min: 0,
+      },
+    ],
+    placeTitle: "Onde vai ser o serviço?",
+    places: [
+      "Hall de entrada",
+      "Corredores",
+      "Escadas",
+      "Garagem",
+      "Áreas comuns",
+      "Dentro das unidades",
+    ],
+    whole: "Prédio todo",
+    works: WORKS,
+    measures: false,
+    approxArea: true,
+    photos: false,
+    note: "Obra grande: o valor sai depois da visita técnica.",
+  },
+  comercial: {
+    label: "Loja, escritório ou comércio",
+    counts: [
+      { key: "ambientes", label: "Quantos ambientes?", short: "Ambientes", start: 2, min: 1 },
+    ],
+    placeTitle: "Que tipo de lugar?",
+    places: [
+      "Loja",
+      "Escritório",
+      "Clínica ou consultório",
+      "Restaurante",
+      "Salão",
+      "Galpão",
+      "Outro",
+    ],
+    single: true,
+    works: WORKS,
+    measures: false,
+    approxArea: true,
+    photos: true,
+    note: "Se puder, mande fotos do espaço para o profissional já ir preparado.",
+  },
+  fachada: {
+    label: "Fachada ou trabalho em altura",
+    counts: [
+      {
+        key: "andares",
+        label: "Quantos andares tem a fachada?",
+        short: "Andares",
+        start: 2,
+        min: 1,
+      },
+    ],
+    placeTitle: "Onde fica?",
+    places: ["Casa", "Prédio", "Comércio"],
+    single: true,
+    works: ["Moldura de fachada", "Marquise ou beiral", "Reparo ou reforma", "Outro"],
+    measures: false,
+    approxArea: true,
+    photos: true,
+    note: "Mande fotos da fachada: ajuda a planejar andaime e material.",
+  },
+};
 const money = (n: number) => n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
 export function Calculator() {
   const [height, setHeight] = useState("3");
   const [width, setWidth] = useState("2");
-  const [scope, setScope] = useState("ambiente");
+  const [scope, setScope] = useState<Scope>("ambiente");
+  const [counts, setCounts] = useState<Record<string, number>>({});
+  const [places, setPlaces] = useState<string[]>([]);
+  const [works, setWorks] = useState<string[]>([]);
+  const [approx, setApprox] = useState("");
+  const [photos, setPhotos] = useState<string[]>([]);
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const [photoError, setPhotoError] = useState("");
+  const config = SCOPES[scope];
   const [serviceId, setServiceId] = useState("");
   const [services, setServices] = useState<PriceService[]>([]);
   const [loading, setLoading] = useState(true);
@@ -78,6 +248,41 @@ export function Calculator() {
     };
   }, []);
 
+  function changeScope(next: Scope) {
+    setScope(next);
+    setCounts({});
+    setPlaces([]);
+    setApprox("");
+    if (!SCOPES[next].photos) setPhotos([]);
+  }
+  function togglePlace(place: string) {
+    if (config.single) return setPlaces(places[0] === place ? [] : [place]);
+    if (place === config.whole) return setPlaces(places.includes(place) ? [] : [place]);
+    const rest = places.filter((item) => item !== config.whole);
+    setPlaces(rest.includes(place) ? rest.filter((item) => item !== place) : [...rest, place]);
+  }
+  function toggleWork(work: string) {
+    setWorks(works.includes(work) ? works.filter((item) => item !== work) : [...works, work]);
+  }
+  async function addPhotos(event: ChangeEvent<HTMLInputElement>) {
+    const files = [...(event.target.files ?? [])].slice(0, MAX_PHOTOS - photos.length);
+    event.target.value = "";
+    if (!files.length) return;
+    setPhotoBusy(true);
+    setPhotoError("");
+    const next: string[] = [];
+    for (const file of files) {
+      try {
+        next.push(await shrinkPhoto(file));
+      } catch {
+        setPhotoError("Uma das fotos não abriu. Tente tirar de novo.");
+      }
+    }
+    setPhotos((current) => [...current, ...next].slice(0, MAX_PHOTOS));
+    setPhotoBusy(false);
+  }
+  const count = (item: Count) => counts[item.key] ?? item.start;
+
   const area = useMemo(() => {
     return measuredArea(Number(height), Number(width));
   }, [height, width]);
@@ -96,6 +301,22 @@ export function Calculator() {
   );
   const custom = !estimate.valid || estimate.needsVisit || !["m²", "m2"].includes(unit);
   const total = estimate.total ?? 0;
+  const summary = [
+    `Tipo: ${config.label}`,
+    ...config.counts.map((item) => `${item.short}: ${count(item)}`),
+    places.length ? `${config.placeTitle.replace("?", "")}: ${places.join(", ")}` : "",
+    works.length ? `Serviço: ${works.join(", ")}` : "",
+    config.measures && area > 0
+      ? `Medidas: ${height} × ${width} m (${area.toLocaleString("pt-BR")} m²)`
+      : "",
+    config.approxArea && Number(approx) > 0 ? `Tamanho aproximado: ${approx} m²` : "",
+    selected && config.measures ? `Referência: ${selected.name}` : "",
+    photos.length ? `Fotos enviadas: ${photos.length}` : "",
+  ].filter(Boolean);
+  function requestVisit() {
+    saveVisitDraft({ summary: summary.join("\n"), photos: config.photos ? photos : [] });
+    setOpen(true);
+  }
 
   return (
     <>
@@ -113,73 +334,189 @@ export function Calculator() {
         <select
           id="project-scope"
           value={scope}
-          onChange={(e) => setScope(e.target.value)}
-          className="w-full rounded-xl bg-background border border-border p-3 text-sm mb-5"
+          onChange={(e) => changeScope(e.target.value as Scope)}
+          className="w-full rounded-xl bg-background border border-border p-3 text-base mb-5"
         >
-          <option value="ambiente">Parede ou ambiente</option>
-          <option value="casa">Casa completa</option>
-          <option value="predio">Edifício ou condomínio</option>
-          <option value="comercial">Empreendimento comercial</option>
-          <option value="fachada">Fachada ou trabalho em altura</option>
-        </select>
-        <div className="grid grid-cols-2 gap-4 mb-5">
-          {[
-            { id: "calc-height", label: "Altura (m)", value: height, set: setHeight },
-            { id: "calc-width", label: "Largura (m)", value: width, set: setWidth },
-          ].map((field) => (
-            <div key={field.id}>
-              <label htmlFor={field.id} className="block text-xs text-muted-foreground mb-2">
-                {field.label}
-              </label>
-              <input
-                id={field.id}
-                inputMode="decimal"
-                type="number"
-                min="0.01"
-                max="1000000"
-                step="0.01"
-                value={field.value}
-                onChange={(e) => field.set(e.target.value)}
-                className="w-full min-w-0 bg-background border border-border rounded-xl p-4 font-mono text-xl focus:border-accent outline-none"
-              />
-            </div>
+          {(Object.keys(SCOPES) as Scope[]).map((key) => (
+            <option key={key} value={key}>
+              {SCOPES[key].label}
+            </option>
           ))}
-        </div>
-        <div className="flex justify-between text-xs text-muted-foreground border-b border-border pb-4 mb-5">
-          <span>Área informada</span>
-          <span className="font-mono text-foreground">
-            {area.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} m²
-          </span>
-        </div>
-        <label htmlFor="calc-service" className="block text-xs text-muted-foreground mb-2">
-          Serviço
-        </label>
-        {loading ? (
-          <div
-            className="h-12 rounded-xl bg-muted animate-pulse"
-            role="status"
-            aria-label="Carregando serviços"
-          />
-        ) : failed || !services.length ? (
-          <div className="flex gap-2 text-sm text-muted-foreground border border-border rounded-xl p-4">
-            <AlertCircle className="size-4 shrink-0 mt-0.5" />
-            {failed
-              ? "Não foi possível consultar os preços. Solicite uma avaliação técnica."
-              : "Os serviços estão sendo preparados. Solicite uma avaliação técnica."}
+        </select>
+        {config.counts.map((item) => (
+          <div key={item.key} className="quote-count">
+            <span>{item.label}</span>
+            <div>
+              <button
+                type="button"
+                aria-label={`Menos — ${item.label}`}
+                disabled={count(item) <= item.min}
+                onClick={() => setCounts({ ...counts, [item.key]: count(item) - 1 })}
+              >
+                <Minus className="size-4" />
+              </button>
+              <strong aria-live="polite">{count(item)}</strong>
+              <button
+                type="button"
+                aria-label={`Mais — ${item.label}`}
+                disabled={count(item) >= 500}
+                onClick={() => setCounts({ ...counts, [item.key]: count(item) + 1 })}
+              >
+                <Plus className="size-4" />
+              </button>
+            </div>
+          </div>
+        ))}
+        <fieldset className="quote-chips">
+          <legend>{config.placeTitle}</legend>
+          <div>
+            {[...(config.whole ? [config.whole] : []), ...config.places].map((place) => (
+              <button
+                key={place}
+                type="button"
+                aria-pressed={places.includes(place)}
+                className={place === config.whole ? "whole" : undefined}
+                onClick={() => togglePlace(place)}
+              >
+                {place}
+              </button>
+            ))}
+          </div>
+        </fieldset>
+        <fieldset className="quote-chips">
+          <legend>O que você quer fazer?</legend>
+          <div>
+            {config.works.map((work) => (
+              <button
+                key={work}
+                type="button"
+                aria-pressed={works.includes(work)}
+                onClick={() => toggleWork(work)}
+              >
+                {work}
+              </button>
+            ))}
+          </div>
+        </fieldset>
+        {config.approxArea && (
+          <label className="block text-xs text-muted-foreground mb-5">
+            Tamanho aproximado em m² (opcional)
+            <input
+              inputMode="decimal"
+              type="number"
+              min="0"
+              step="1"
+              placeholder="Se não souber, deixe em branco"
+              value={approx}
+              onChange={(e) => setApprox(e.target.value)}
+              className="block w-full bg-background border border-border rounded-xl p-3 text-base mt-2"
+            />
+          </label>
+        )}
+        {config.measures && (
+          <>
+            <div className="grid grid-cols-2 gap-4 mb-5">
+              {[
+                { id: "calc-height", label: "Altura (m)", value: height, set: setHeight },
+                { id: "calc-width", label: "Largura (m)", value: width, set: setWidth },
+              ].map((field) => (
+                <div key={field.id}>
+                  <label htmlFor={field.id} className="block text-xs text-muted-foreground mb-2">
+                    {field.label}
+                  </label>
+                  <input
+                    id={field.id}
+                    inputMode="decimal"
+                    type="number"
+                    min="0.01"
+                    max="1000000"
+                    step="0.01"
+                    value={field.value}
+                    onChange={(e) => field.set(e.target.value)}
+                    className="w-full min-w-0 bg-background border border-border rounded-xl p-4 font-mono text-xl focus:border-accent outline-none"
+                  />
+                </div>
+              ))}
+            </div>
+            <div className="flex justify-between text-xs text-muted-foreground border-b border-border pb-4 mb-5">
+              <span>Área informada</span>
+              <span className="font-mono text-foreground">
+                {area.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} m²
+              </span>
+            </div>
+            <label htmlFor="calc-service" className="block text-xs text-muted-foreground mb-2">
+              Serviço para a estimativa
+            </label>
+            {loading ? (
+              <div
+                className="h-12 rounded-xl bg-muted animate-pulse"
+                role="status"
+                aria-label="Carregando serviços"
+              />
+            ) : failed || !services.length ? (
+              <div className="flex gap-2 text-sm text-muted-foreground border border-border rounded-xl p-4">
+                <AlertCircle className="size-4 shrink-0 mt-0.5" />
+                {failed
+                  ? "Não foi possível consultar os preços. Solicite uma avaliação técnica."
+                  : "Os preços estão sendo preparados. Solicite uma avaliação técnica."}
+              </div>
+            ) : (
+              <select
+                id="calc-service"
+                value={serviceId}
+                onChange={(e) => setServiceId(e.target.value)}
+                className="w-full bg-background border border-border rounded-xl p-3 text-base"
+              >
+                {services.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+            )}
+          </>
+        )}
+        {config.photos ? (
+          <div className="quote-photos">
+            <p>
+              Fotos do local <small>(até {MAX_PHOTOS}, opcional)</small>
+            </p>
+            <div>
+              {photos.map((photo, index) => (
+                <figure key={index}>
+                  <img src={photo} alt={`Foto ${index + 1} do local`} />
+                  <button
+                    type="button"
+                    aria-label={`Tirar foto ${index + 1}`}
+                    onClick={() => setPhotos(photos.filter((_, item) => item !== index))}
+                  >
+                    <X className="size-3.5" />
+                  </button>
+                </figure>
+              ))}
+              {photos.length < MAX_PHOTOS && (
+                <label className={photoBusy ? "busy" : undefined}>
+                  <Camera className="size-5" />
+                  <span>{photoBusy ? "Preparando…" : "Adicionar"}</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    disabled={photoBusy}
+                    onChange={(event) => void addPhotos(event)}
+                  />
+                </label>
+              )}
+            </div>
+            {photoError && (
+              <p className="quote-error" role="alert">
+                {photoError}
+              </p>
+            )}
+            <small>{config.note}</small>
           </div>
         ) : (
-          <select
-            id="calc-service"
-            value={serviceId}
-            onChange={(e) => setServiceId(e.target.value)}
-            className="w-full bg-background border border-border rounded-xl p-3 text-sm"
-          >
-            {services.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </select>
+          <p className="quote-note">{config.note}</p>
         )}
         <div className="mt-6 rounded-2xl border border-accent/15 bg-accent/5 p-5">
           <p className="eyebrow">{custom ? "Proposta personalizada" : "Estimativa preliminar"}</p>
@@ -192,7 +529,7 @@ export function Calculator() {
               : `Referência de ${money(Number(selected?.price_per_m2))}/m². Sujeita à validação das medidas, condições da superfície e escopo na visita técnica.`}
           </p>
         </div>
-        <button type="button" onClick={() => setOpen(true)} className="gold-button w-full mt-5">
+        <button type="button" onClick={requestVisit} className="gold-button w-full mt-5">
           {custom ? <Building2 className="size-4" /> : null}Solicitar visita técnica
           <ArrowRight className="size-4" />
         </button>
@@ -204,9 +541,10 @@ export function Calculator() {
         open={open}
         onOpenChange={setOpen}
         context={{
-          service: selected?.name ?? "Orçamento personalizado",
-          area,
+          service: config.label,
+          area: config.measures ? area : undefined,
           price: custom ? undefined : total,
+          details: summary.slice(1),
         }}
       />
     </>

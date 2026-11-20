@@ -594,6 +594,7 @@ function Agenda() {
       notes: string;
       status: string;
       scheduled_at: string;
+      photos?: number;
     }[]
   >("appointments");
   return (
@@ -616,6 +617,27 @@ function Agenda() {
             {item.email} · {item.address}
           </p>
           {item.notes && <p className="request-notes">{item.notes}</p>}
+          {!!item.photos && (
+            <div className="visit-photos">
+              <p>Fotos que o cliente mandou ({item.photos})</p>
+              <div>
+                {Array.from({ length: Math.min(6, Number(item.photos)) }, (_, index) => (
+                  <a
+                    key={index}
+                    href={`/api/neon/appointments/${item.id}/photos/${index}`}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    <img
+                      loading="lazy"
+                      src={`/api/neon/appointments/${item.id}/photos/${index}`}
+                      alt={`Foto ${index + 1} do cliente`}
+                    />
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
           <OperationForm
             label="Salvar agendamento"
             submit={async (form) => {

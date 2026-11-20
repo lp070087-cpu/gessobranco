@@ -985,7 +985,7 @@ export async function handleNeonRequest(request: Request, now = new Date()): Pro
     if (path === "appointments" && request.method === "GET") {
       const result = hasCompanyPermission(user, "service_agenda")
         ? await db.execute(
-            sql`SELECT a.*,u.full_name,u.email FROM preciso.appointments a JOIN preciso.users u ON u.id=a.user_id ORDER BY scheduled_at`,
+            sql`SELECT a.*,u.full_name,u.email,COALESCE((SELECT jsonb_array_length(p.value) FROM preciso.platform_settings p WHERE p.key='appointment_photos:'||a.id),0) AS photos FROM preciso.appointments a JOIN preciso.users u ON u.id=a.user_id ORDER BY scheduled_at`,
           )
         : await db.execute(
             sql`SELECT * FROM preciso.appointments WHERE user_id=${user.id} ORDER BY scheduled_at`,
@@ -999,14 +999,44 @@ export async function handleNeonRequest(request: Request, now = new Date()): Pro
           scheduled_at: z.string().datetime({ offset: true }),
           address: z.string().trim().min(5).max(1000),
           notes: z.string().max(5000).default(""),
+          photos: z.array(z.string().max(1_700_000)).max(6).default([]),
         })
         .strict()
         .refine((v) => new Date(v.scheduled_at).getTime() > Date.now())
-        .parse(await body(request));
+        .parse(await body(request, 6_000_000));
+      if (input.photos.some((photo) => !decodeServiceImage(photo)))
+        return json({ error: "Uma das fotos não é válida. Envie fotos JPG ou PNG." }, 400);
       const result =
         await db.execute(sql`INSERT INTO preciso.appointments(user_id,kind,scheduled_at,address,notes)
         VALUES(${user.id},${input.kind},${input.scheduled_at},${input.address},${input.notes}) RETURNING *`);
-      return json(result.rows[0], 201);
+      const created = result.rows[0] as { id: string };
+      if (input.photos.length)
+        await db.execute(sql`INSERT INTO preciso.platform_settings(key,value,updated_by)
+          VALUES(${"appointment_photos:" + created.id},${JSON.stringify(input.photos)}::jsonb,${user.id}::uuid)`);
+      return json({ ...created, photos: input.photos.length }, 201);
+    }
+    if (/^appointments\/[0-9a-f-]{36}\/photos\/[0-5]$/.test(path) && request.method === "GET") {
+      const [, id, , index] = path.split("/");
+      const owner = await db.execute(
+        sql`SELECT user_id FROM preciso.appointments WHERE id=${id}::uuid`,
+      );
+      const row = owner.rows[0] as { user_id: string } | undefined;
+      if (!row || (row.user_id !== user.id && !hasCompanyPermission(user, "service_agenda")))
+        return new Response(null, { status: 404 });
+      const result = await db.execute(
+        sql`SELECT value->>(${Number(index)}::int) AS photo FROM preciso.platform_settings WHERE key=${"appointment_photos:" + id}`,
+      );
+      const photo = result.rows[0]?.photo;
+      const asset = typeof photo === "string" ? decodeServiceImage(photo) : null;
+      return asset
+        ? new Response(new Uint8Array(asset.bytes), {
+            headers: {
+              "Content-Type": asset.type,
+              "Cache-Control": "private, max-age=600",
+              "X-Content-Type-Options": "nosniff",
+            },
+          })
+        : new Response(null, { status: 404 });
     }
     if (path === "payments" && request.method === "GET") {
       const result =

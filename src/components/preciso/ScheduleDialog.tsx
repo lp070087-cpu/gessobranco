@@ -14,7 +14,7 @@ import { commercialFetch } from "@/lib/commercial-client";
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  context?: { service?: string; area?: number; price?: number };
+  context?: { service?: string; area?: number; price?: number; details?: string[] };
 }
 
 export function ScheduleDialog({ open, onOpenChange, context }: Props) {
@@ -54,6 +54,13 @@ export function ScheduleDialog({ open, onOpenChange, context }: Props) {
               <p className="mt-1 text-muted-foreground">
                 Área informada: {context.area.toLocaleString("pt-BR")} m²
               </p>
+            )}
+            {!!context.details?.length && (
+              <ul className="mt-2 space-y-1 text-muted-foreground">
+                {context.details.map((line) => (
+                  <li key={line}>{line}</li>
+                ))}
+              </ul>
             )}
           </div>
         )}
