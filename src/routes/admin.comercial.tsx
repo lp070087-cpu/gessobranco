@@ -488,7 +488,7 @@ function Commercial() {
                               {product.units.map((unit) => (
                                 <p key={unit.id}>
                                   {unit.name} = {quantityBR(unit.factor)} {product.base_unit} ·{" "}
-                                  {moneyBR(unit.price)}
+                                  {unit.price === null ? "Sem preço" : moneyBR(unit.price)}
                                 </p>
                               ))}
                             </td>
