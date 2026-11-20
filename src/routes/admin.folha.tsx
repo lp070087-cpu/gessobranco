@@ -9,10 +9,10 @@ import {
   Closings,
   CompanyDebts,
   DaySheet,
-  Deliveries,
   Fiados,
   WeekSheet,
 } from "@/components/preciso/StoreSheets";
+import { Deliveries } from "@/components/preciso/StoreDeliveries";
 import type { CompanyActor } from "@/lib/company-permissions";
 
 const slugs = ["semana", "fechamentos", "fiados", "debitos", "entregas"] as const;

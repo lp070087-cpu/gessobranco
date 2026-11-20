@@ -70,7 +70,11 @@
 .store-sheet .panel {
   border-radius: 18px;
   padding: clamp(16px, 2vw, 24px);
-  background: linear-gradient(180deg, var(--surface), color-mix(in srgb, var(--surface) 70%, var(--background)));
+  background: linear-gradient(
+    180deg,
+    var(--surface),
+    color-mix(in srgb, var(--surface) 70%, var(--background))
+  );
 }
 .store-sheet .panel h3 {
   font-size: 15px;
@@ -475,4 +479,293 @@
   .debt-actions {
     grid-column: 1 / -1;
   }
+}
+
+/* Conferir entregas: cartões para escolher a entrega e conferência com botões de + e −. */
+.file-action {
+  position: relative;
+  cursor: pointer;
+}
+.file-action input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.delivery-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
+  gap: 14px;
+}
+.delivery-card {
+  display: grid;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--surface);
+  overflow: hidden;
+  transition:
+    border-color 0.2s,
+    box-shadow 0.2s,
+    transform 0.2s;
+}
+.delivery-card:hover {
+  transform: translateY(-2px);
+}
+.delivery-card.is-selected {
+  border-color: var(--accent);
+  box-shadow: 0 10px 26px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+.delivery-pick {
+  display: grid;
+  gap: 6px;
+  padding: 16px 16px 10px;
+  text-align: left;
+  width: 100%;
+}
+.delivery-pick strong {
+  font-size: 16px;
+}
+.delivery-pick small {
+  color: var(--muted-foreground);
+}
+.arrival {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  padding: 4px 10px;
+  border-radius: 99px;
+  font-size: 12px;
+  font-weight: 650;
+  background: var(--background);
+}
+.arrival.is-today {
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+.arrival.is-late {
+  background: color-mix(in srgb, var(--destructive) 15%, transparent);
+  color: oklch(0.52 0.19 28);
+}
+.delivery-items {
+  display: grid;
+  gap: 2px;
+  font-size: 13px;
+}
+.delivery-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  color: var(--muted-foreground);
+  margin-top: 4px;
+}
+.delivery-actions {
+  display: flex;
+  gap: 8px;
+  padding: 0 16px 16px;
+}
+.commercial .delivery-actions .action {
+  flex: 1;
+  justify-content: center;
+}
+.check-panel {
+  border-color: var(--accent);
+  scroll-margin-top: 16px;
+}
+.check-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+.check-item {
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) auto;
+  gap: 10px 16px;
+  align-items: center;
+  padding: 14px;
+  border-radius: 14px;
+  background: var(--background);
+  border: 1px solid var(--border);
+}
+.check-name {
+  display: grid;
+  gap: 2px;
+}
+.check-name small {
+  color: var(--muted-foreground);
+}
+.check-name .missing {
+  color: oklch(0.55 0.19 28);
+  font-weight: 650;
+}
+.steppers {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.stepper {
+  display: grid;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--muted-foreground);
+}
+.stepper > div {
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  overflow: hidden;
+}
+.stepper button {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+}
+.commercial .stepper input {
+  width: 56px;
+  min-height: 44px;
+  border: 0;
+  border-radius: 0;
+  text-align: center;
+  font-size: 16px;
+  font-weight: 650;
+  padding: 0;
+}
+.stepper.is-alert > div {
+  border-color: oklch(0.6 0.17 28);
+}
+.stepper.is-alert input {
+  color: oklch(0.52 0.19 28);
+}
+.check-note {
+  grid-column: 1 / -1;
+}
+.check-summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.check-summary .is-alert {
+  color: oklch(0.52 0.19 28);
+  font-weight: 650;
+}
+.check-summary .is-ok {
+  color: oklch(0.45 0.13 150);
+  font-weight: 650;
+}
+.check-result {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(64px, auto));
+  gap: 8px;
+  text-align: center;
+}
+.check-result dt {
+  font-size: 10px;
+  color: var(--muted-foreground);
+}
+.check-result dd {
+  font-weight: 700;
+}
+.check-result .is-alert dd {
+  color: oklch(0.52 0.19 28);
+}
+.checked-order summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+.order-lines {
+  display: grid;
+  gap: 10px;
+  margin: 8px 0;
+}
+.order-line {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+  padding: 12px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+}
+.order-line > small {
+  grid-column: 1 / -1;
+}
+.order-line.is-missing {
+  border-color: oklch(0.65 0.15 55);
+  background: color-mix(in srgb, oklch(0.8 0.14 60) 10%, transparent);
+}
+.commercial .order-line label {
+  margin: 0;
+}
+.arrival-field span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 650;
+  color: var(--accent);
+}
+@media (max-width: 760px) {
+  .check-item {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .steppers {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .stepper > div {
+    justify-content: space-between;
+  }
+  .stepper button {
+    width: 36px;
+  }
+  .commercial .stepper input {
+    width: 100%;
+    min-width: 0;
+  }
+  .order-line {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .order-line label:first-of-type {
+    grid-column: 1 / -1;
+  }
+  .check-result {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .commercial .check-summary .actions {
+    width: 100%;
+  }
+  .commercial .check-summary .action {
+    flex: 1;
+    justify-content: center;
+  }
+}
+.commercial label.file-action {
+  flex-direction: row;
+  align-items: center;
+  margin: 0;
+}
+@media (max-width: 760px) {
+  .commercial .commercial-header .actions {
+    flex-wrap: nowrap;
+    margin: 0;
+  }
+  .commercial .commercial-header .action {
+    padding: 8px 12px;
+    min-height: 40px;
+  }
+}
+.totals-band.debt-totals {
+  display: flex;
+  flex-wrap: wrap;
+}
+.totals-band.debt-totals > div {
+  flex: 1 1 150px;
 }

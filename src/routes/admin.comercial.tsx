@@ -25,6 +25,7 @@ import {
 import { CommercialSales } from "@/components/preciso/CommercialSales";
 import { CommercialImport } from "@/components/preciso/CommercialImport";
 import { CompanyAccess } from "@/components/preciso/CompanyAccess";
+import { sessionCache } from "@/components/preciso/CompanySession";
 import { CompanyRequests } from "@/components/preciso/CompanyRequests";
 import { AccountLayout, ManagementMenu } from "@/components/preciso/AccountMenu";
 import type { CompanyActor } from "@/lib/company-permissions";
@@ -56,15 +57,21 @@ export const Route = createFileRoute("/admin/comercial")({
   component: Commercial,
 });
 type Actor = CompanyActor;
+// Dados da loja guardados entre as telas, para a troca de aba não piscar.
+const storeCache: { state: CommercialState | null; report: Report | null } = {
+  state: null,
+  report: null,
+};
 type Pending = { actor: string; kind: string; body: Record<string, unknown> };
 const monthStart = () => localDay().slice(0, 7) + "-01";
 type Tab = "Visão Geral" | "Caixa" | (typeof sections)[Section];
 
 function Commercial() {
   const navigate = useNavigate();
-  const [user, setUser] = useState<Actor | null>(null);
-  const [state, setState] = useState<CommercialState | null>(null);
-  const [report, setReport] = useState<Report | null>(null);
+  const cachedUser = sessionCache.user?.role === "admin" ? sessionCache.user : null;
+  const [user, setUser] = useState<Actor | null>(cachedUser);
+  const [state, setState] = useState<CommercialState | null>(cachedUser ? storeCache.state : null);
+  const [report, setReport] = useState<Report | null>(cachedUser ? storeCache.report : null);
   const { secao } = Route.useSearch();
   const tab: Tab = secao ? sections[secao] : "Visão Geral";
   const setTab = (next: Tab) => {
@@ -76,7 +83,7 @@ function Commercial() {
   const [reportPeriod, setReportPeriod] = useState({ start: monthStart(), end: localDay() });
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!(cachedUser && storeCache.state));
   const [busy, setBusy] = useState(false);
   const [pending, setPending] = useState<Pending | null>(null);
   const [start, setStart] = useState(monthStart);
@@ -93,11 +100,14 @@ function Commercial() {
     );
     if (signal?.aborted) return;
     setReport(result);
+    storeCache.report = result;
     setReportPeriod({ start: from, end: to });
   }
 
   async function load(signal?: AbortSignal) {
-    setState(await commercialFetch<CommercialState>("commercial/state", undefined, signal));
+    const next = await commercialFetch<CommercialState>("commercial/state", undefined, signal);
+    storeCache.state = next;
+    setState(next);
     await loadReport(start, end, signal);
   }
   useEffect(() => {
@@ -111,6 +121,7 @@ function Commercial() {
         );
         if (data.user.role !== "admin")
           throw new Error("Esta área exige uma conta administrativa.");
+        sessionCache.user = data.user;
         setUser(data.user);
         try {
           const saved = JSON.parse(
@@ -211,6 +222,7 @@ function Commercial() {
       });
       if (response.user.role !== "admin")
         throw new Error("Esta área exige uma conta administrativa.");
+      sessionCache.user = response.user;
       setUser(response.user);
       await load();
     } catch (failure) {
@@ -274,6 +286,9 @@ function Commercial() {
             onClick={() =>
               void commercialFetch("auth/logout", {})
                 .then(() => {
+                  sessionCache.user = null;
+                  storeCache.state = null;
+                  storeCache.report = null;
                   setUser(null);
                   setState(null);
                 })

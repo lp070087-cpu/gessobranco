@@ -5,6 +5,9 @@ import type { CompanyActor } from "@/lib/company-permissions";
 import "./commercial.css";
 import { PanelSkeleton } from "@/components/preciso/LoadingSkeleton";
 
+/** A sessão fica guardada entre as telas da gestão: trocar de aba não recarrega tudo. */
+export const sessionCache: { user: CompanyActor | null } = { user: null };
+
 export function CompanySession({
   title,
   management,
@@ -18,8 +21,8 @@ export function CompanySession({
   allowed?: (user: CompanyActor) => boolean;
   children: (user: CompanyActor) => ReactNode;
 }) {
-  const [user, setUser] = useState<CompanyActor | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState<CompanyActor | null>(sessionCache.user);
+  const [loading, setLoading] = useState(!sessionCache.user);
   const [error, setError] = useState("");
   const navigate = useNavigate();
   useEffect(() => {
@@ -51,9 +54,14 @@ export function CompanySession({
     }
     void currentSession()
       .then(({ user }) => {
+        sessionCache.user = user;
         if (!controller.signal.aborted) setUser(user);
       })
       .catch((failure: Error & { status?: number }) => {
+        if (failure.status === 401) {
+          sessionCache.user = null;
+          if (!controller.signal.aborted) setUser(null);
+        }
         if (!controller.signal.aborted && failure.status !== 401) setError(failure.message);
       })
       .finally(() => {
@@ -64,6 +72,7 @@ export function CompanySession({
   async function signOut() {
     try {
       await commercialFetch("auth/logout", {});
+      sessionCache.user = null;
       if (import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY) {
         const { supabase } = await import("@/integrations/supabase/client");
         await supabase.auth.signOut({ scope: "local" });

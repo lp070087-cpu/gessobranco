@@ -87,6 +87,20 @@ test("folha do dia, retiradas, fechamentos e conferência de entrega", async () 
       assert.equal(response.status, 200, await response.clone().text());
       return response.json();
     };
+    const okRawStatus = async (path, token, body) =>
+      (
+        await handleNeonRequest(
+          new Request(`http://ouro.test/api/neon/${path}`, {
+            method: "POST",
+            headers: {
+              Cookie: `preciso_session=${token}`,
+              "Content-Type": "application/json",
+              Origin: "http://ouro.test",
+            },
+            body: JSON.stringify(body),
+          }),
+        )
+      ).status;
     async function account(email, name) {
       const credentials = { email, password: "Senha-de-teste-12345", full_name: name };
       const registered = await handleNeonRequest(
@@ -260,6 +274,51 @@ test("folha do dia, retiradas, fechamentos e conferência de entrega", async () 
     sheet = await ok(`store/sheet?start=${today}&end=${today}`, owner);
     assert.equal(sheet.debts[0].amount, null);
     assert.equal(sheet.debts[0].example, true);
+
+    // Fiado: cliente autorizado compra a prazo, aparece nos fiados e depois paga.
+    await ok("store/cash_open", owner, { opening: 0 });
+    const client = await ok("commercial/customer", owner, {
+      name: "Bigode",
+      contact: "",
+      profile: "recorrente",
+      allow_credit: true,
+    });
+    const credit = await ok("commercial/sale", owner, {
+      customer_id: client.id,
+      items: [{ unit_id: unit.id, quantity: 4, price: null, reason: "" }],
+      payments: [],
+      freight: 0,
+      fees: 0,
+      taxes: 0,
+      other_costs: 0,
+    });
+    sheet = await ok(`store/sheet?start=${today}&end=${today}`, owner);
+    assert.deepEqual(
+      sheet.fiados.map((item) => [item.name, Number(item.amount)]),
+      [["Bigode", 20]],
+    );
+    await ok("commercial/payment", owner, {
+      sale_id: credit.id,
+      method: "pix",
+      amount: 20,
+      reference: "",
+      confirmed: true,
+    });
+    sheet = await ok(`store/sheet?start=${today}&end=${today}`, owner);
+    assert.equal(sheet.fiados.length, 0);
+
+    // Trocar a própria senha.
+    assert.equal(
+      await okRawStatus("auth/password", secretary, {
+        current: "errada",
+        next: "Nova-senha-12345",
+      }),
+      400,
+    );
+    await okRaw("auth/password", secretary, {
+      current: "Senha-de-teste-12345",
+      next: "Nova-senha-12345",
+    });
   } finally {
     if (previousUrl === undefined) delete process.env.DATABASE_URL;
     else process.env.DATABASE_URL = previousUrl;

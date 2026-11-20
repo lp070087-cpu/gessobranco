@@ -1,27 +1,39 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { AccountLayout, ManagementMenu } from "@/components/preciso/AccountMenu";
+import {
+  AccountLayout,
+  ManagementMenu,
+  hasManagementAccess,
+} from "@/components/preciso/AccountMenu";
+import { ChangePassword } from "@/components/preciso/ChangePassword";
 import { CompanyRequests } from "@/components/preciso/CompanyRequests";
 import { CompanySession } from "@/components/preciso/CompanySession";
 import { BusinessSettingsForm } from "@/components/preciso/BusinessSettings";
 import { hasCompanyPermission } from "@/lib/company-permissions";
 
 export const Route = createFileRoute("/admin/administracao")({
-  validateSearch: (search: Record<string, unknown>): { secao?: "configuracoes" } =>
-    search.secao === "configuracoes" ? { secao: "configuracoes" } : {},
+  validateSearch: (search: Record<string, unknown>): { secao?: "configuracoes" | "senha" } =>
+    search.secao === "configuracoes" || search.secao === "senha" ? { secao: search.secao } : {},
   head: () => ({ meta: [{ title: "Administração — Ouro Branco" }] }),
   component: Administration,
 });
 
 function Administration() {
-  const settings = Route.useSearch().secao === "configuracoes";
+  const { secao } = Route.useSearch();
+  const settings = secao === "configuracoes";
   return (
     <CompanySession
       title="Administração"
-      allowed={(user) => hasCompanyPermission(user, "service_requests")}
+      allowed={(user) =>
+        secao === "senha"
+          ? hasManagementAccess(user)
+          : hasCompanyPermission(user, "service_requests")
+      }
     >
       {(user) => (
         <AccountLayout label="Menu da gestão" menu={<ManagementMenu user={user} />}>
-          {settings && user.role === "admin" ? (
+          {secao === "senha" ? (
+            <ChangePassword />
+          ) : settings && user.role === "admin" ? (
             <BusinessSettingsForm />
           ) : (
             <CompanyRequests

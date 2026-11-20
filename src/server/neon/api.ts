@@ -432,6 +432,25 @@ export async function handleNeonRequest(request: Request, now = new Date()): Pro
     const user = await actor(request);
     if (!user) return json({ error: "Autenticação necessária." }, 401);
     if (path === "auth/me" && request.method === "GET") return json({ user });
+    if (path === "auth/password" && request.method === "POST") {
+      const input = z
+        .object({ current: z.string().min(1).max(200), next: z.string().min(10).max(200) })
+        .strict()
+        .parse(await body(request));
+      const [row] = await db
+        .select({ hash: users.passwordHash })
+        .from(users)
+        .where(eq(users.id, user.id))
+        .limit(1);
+      if (!row || !(await verifyPassword(input.current, row.hash)))
+        return json({ error: "A senha atual não confere." }, 400);
+      await db.execute(sql`UPDATE preciso.users SET password_hash=${await hashPassword(input.next)}
+        WHERE id=${user.id}::uuid`);
+      // Outras sessões abertas com a senha antiga saem; esta continua.
+      await db.execute(sql`DELETE FROM preciso.sessions WHERE user_id=${user.id}::uuid
+        AND token_hash<>${sha256(token(request))}`);
+      return json({ ok: true });
+    }
     if (
       path === "admin/owner-expenses" ||
       /^admin\/owner-expenses\/[0-9a-f-]{36}\/receipt$/.test(path)

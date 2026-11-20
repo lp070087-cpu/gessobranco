@@ -33,16 +33,23 @@ import {
 } from "./store-sheets";
 import "./store-sheets.css";
 
-function useLoad<T>(path: string | null) {
-  const [data, setData] = useState<T | null>(null);
+// Guarda a última resposta de cada tela: ao voltar, mostra na hora e atualiza por trás.
+const loaded = new Map<string, unknown>();
+
+export function useLoad<T>(path: string | null) {
+  const [data, setData] = useState<T | null>(() =>
+    path ? ((loaded.get(path) as T | undefined) ?? null) : null,
+  );
   const [error, setError] = useState("");
   const [revision, setRevision] = useState(0);
   useEffect(() => {
     if (!path) return;
     const controller = new AbortController();
     setError("");
+    if (loaded.has(path)) setData(loaded.get(path) as T);
     void commercialFetch<T>(path, undefined, controller.signal)
       .then((value) => {
+        loaded.set(path, value);
         if (!controller.signal.aborted) setData(value);
       })
       .catch((failure: Error) => {
@@ -54,7 +61,7 @@ function useLoad<T>(path: string | null) {
 }
 
 /** Envia um formulário e mostra o resultado; reaproveitado em todas as folhas. */
-function useAction(done: () => void) {
+export function useAction(done: () => void) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
@@ -92,13 +99,13 @@ function useAction(done: () => void) {
   return { busy, run, feedback };
 }
 
-const value = (form: FormData, key: string) => String(form.get(key) ?? "").trim();
-const number = (form: FormData, key: string) => {
+export const value = (form: FormData, key: string) => String(form.get(key) ?? "").trim();
+export const number = (form: FormData, key: string) => {
   const raw = value(form, key).replace(/\./g, "").replace(",", ".");
   return raw === "" ? null : Number(raw);
 };
 
-function SheetHeader({
+export function SheetHeader({
   title,
   subtitle,
   children,
@@ -1055,7 +1062,7 @@ function DebtForm({ debt, kind, done }: { debt?: Debt; kind: Debt["kind"]; done:
 function DebtRow({ debt, reload }: { debt: Debt; reload: () => void }) {
   const [editing, setEditing] = useState(false);
   const action = useAction(reload);
-  const overdue = !debt.paid_on && debt.due_on && debt.due_on < localDay();
+  const overdue = debt.kind !== "fiado" && !debt.paid_on && debt.due_on && debt.due_on < localDay();
   return (
     <div className={"debt-row" + (debt.paid_on ? " is-paid" : "")}>
       <div className="debt-main">
@@ -1276,439 +1283,5 @@ export function Fiados() {
         </>
       )}
     </div>
-  );
-}
-
-/* ------------------------------------------------------------------ Conferência de entregas */
-
-export function Deliveries() {
-  const orders = useLoad<SupplierOrder[]>("store/orders");
-  const state = useLoad<CommercialState>("commercial/state");
-  const [creating, setCreating] = useState(false);
-  const [checking, setChecking] = useState<string | null>(null);
-  const action = useAction(orders.reload);
-  const waiting = orders.data?.filter((order) => order.status !== "conferido") ?? [];
-  const done = orders.data?.filter((order) => order.status === "conferido") ?? [];
-  return (
-    <div className="store-sheet">
-      <SheetHeader title="Conferir entregas" subtitle="Pedido ao fornecedor › chegou › conferido">
-        <button type="button" className="action primary" onClick={() => setCreating(!creating)}>
-          <Plus size={16} /> Novo pedido
-        </button>
-      </SheetHeader>
-      {orders.error && <p className="notice error">{orders.error}</p>}
-      {action.feedback}
-      {creating && state.data && (
-        <OrderForm
-          state={state.data}
-          done={() => {
-            setCreating(false);
-            orders.reload();
-          }}
-        />
-      )}
-      {!orders.data ? (
-        <PanelSkeleton label="Carregando pedidos…" />
-      ) : (
-        <>
-          <h3 className="list-title">Aguardando ou para conferir</h3>
-          {waiting.length === 0 && (
-            <section className="panel">
-              <p className="hint">Nenhum pedido esperando entrega.</p>
-            </section>
-          )}
-          {waiting.map((order) => (
-            <article className="panel order-card" key={order.id}>
-              <OrderHeader order={order} />
-              {checking === order.id ? (
-                <OrderCheck
-                  order={order}
-                  cancel={() => setChecking(null)}
-                  done={() => {
-                    setChecking(null);
-                    orders.reload();
-                  }}
-                />
-              ) : (
-                <>
-                  <ul className="order-items">
-                    {order.items.map((item, index) => (
-                      <li key={index}>
-                        <strong>{qty(item.quantity)}</strong> {item.product}
-                        <small> · {item.unit}</small>
-                      </li>
-                    ))}
-                  </ul>
-                  <div className="actions">
-                    {order.status === "aguardando" && (
-                      <button
-                        type="button"
-                        className="action"
-                        disabled={action.busy}
-                        onClick={() =>
-                          void action
-                            .run(
-                              () => sendStore("order_arrived", { order_id: order.id }),
-                              "Entrega marcada como chegou. Agora confira os itens.",
-                            )
-                            .then((ok) => ok && setChecking(order.id))
-                        }
-                      >
-                        <Truck size={16} /> A entrega chegou
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      className="action primary"
-                      onClick={() => setChecking(order.id)}
-                    >
-                      <PackageCheck size={16} /> Conferir itens
-                    </button>
-                  </div>
-                </>
-              )}
-            </article>
-          ))}
-          <h3 className="list-title">Conferidos</h3>
-          {done.length === 0 && (
-            <section className="panel">
-              <p className="hint">Nenhuma entrega conferida ainda.</p>
-            </section>
-          )}
-          {done.map((order) => (
-            <article className="panel order-card" key={order.id}>
-              <OrderHeader order={order} />
-              <div className="table-scroll">
-                <table className="sheet-table">
-                  <thead>
-                    <tr>
-                      <th>Produto</th>
-                      <th className="num">Pedido</th>
-                      <th className="num">Chegou bom</th>
-                      <th className="num">Quebradas</th>
-                      <th className="num">Avariadas</th>
-                      <th className="num">Faltou</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {order.items.map((item, index) => {
-                      const checked = order.check_result?.items[index];
-                      return (
-                        <tr key={index}>
-                          <td>
-                            {item.product}
-                            {checked?.note && <small className="hint"> · {checked.note}</small>}
-                          </td>
-                          <td className="num">{qty(item.quantity)}</td>
-                          <td className="num strong">{qty(checked?.ok ?? 0)}</td>
-                          <td className={"num" + (checked?.broken ? " is-alert" : "")}>
-                            {qty(checked?.broken ?? 0)}
-                          </td>
-                          <td className={"num" + (checked?.damaged ? " is-alert" : "")}>
-                            {qty(checked?.damaged ?? 0)}
-                          </td>
-                          <td className={"num" + (checked?.missing ? " is-alert" : "")}>
-                            {qty(checked?.missing ?? 0)}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-              {order.check_result?.notes && <p className="hint">“{order.check_result.notes}”</p>}
-            </article>
-          ))}
-        </>
-      )}
-    </div>
-  );
-}
-
-function OrderHeader({ order }: { order: SupplierOrder }) {
-  const labels = {
-    aguardando: "Aguardando entrega",
-    chegou: "Chegou · conferir",
-    conferido: "Conferido",
-  };
-  return (
-    <div className="order-header">
-      <div>
-        <p className="eyebrow">{order.supplier ?? "Fornecedor não informado"}</p>
-        <h3>{order.reference || "Pedido sem número"}</h3>
-        <small className="hint">
-          Pedido em {shortDate(order.ordered_on)}
-          {order.expected_on ? ` · previsão ${shortDate(order.expected_on)}` : ""}
-          {order.checked_at
-            ? ` · conferido em ${new Date(order.checked_at).toLocaleString("pt-BR")}`
-            : ""}
-        </small>
-      </div>
-      <span className={"chip chip-status-" + order.status}>{labels[order.status]}</span>
-    </div>
-  );
-}
-
-function OrderCheck({
-  order,
-  cancel,
-  done,
-}: {
-  order: SupplierOrder;
-  cancel: () => void;
-  done: () => void;
-}) {
-  const action = useAction(done);
-  const [rows, setRows] = useState(() =>
-    order.items.map((item) => ({ ok: Number(item.quantity), broken: 0, damaged: 0, note: "" })),
-  );
-  const update = (index: number, key: "ok" | "broken" | "damaged" | "note", next: string) =>
-    setRows((current) =>
-      current.map((row, position) =>
-        position === index
-          ? {
-              ...row,
-              [key]: key === "note" ? next : Math.max(0, Number(next.replace(",", ".")) || 0),
-            }
-          : row,
-      ),
-    );
-  return (
-    <form
-      onSubmit={(event) => {
-        event.preventDefault();
-        const form = new FormData(event.currentTarget);
-        void action.run(
-          () =>
-            sendStore("order_check", {
-              order_id: order.id,
-              notes: value(form, "notes"),
-              items: rows,
-            }),
-          "Entrega conferida. Só o que chegou bom entrou no estoque.",
-        );
-      }}
-    >
-      {action.feedback}
-      <p className="hint">
-        Conte o que chegou. Pedras e placas quebradas ou avariadas não entram no estoque e ficam
-        anotadas para cobrar do fornecedor.
-      </p>
-      <div className="table-scroll">
-        <table className="sheet-table check-table">
-          <thead>
-            <tr>
-              <th>Produto</th>
-              <th className="num">Pedido</th>
-              <th>Chegou bom</th>
-              <th>Quebradas</th>
-              <th>Avariadas</th>
-              <th className="num">Faltou</th>
-              <th>Observação</th>
-            </tr>
-          </thead>
-          <tbody>
-            {order.items.map((item, index) => {
-              const row = rows[index];
-              const missing = Math.max(
-                Number(item.quantity) - row.ok - row.broken - row.damaged,
-                0,
-              );
-              return (
-                <tr key={index}>
-                  <td>
-                    {item.product}
-                    <small className="hint"> · {item.unit}</small>
-                  </td>
-                  <td className="num strong">{qty(item.quantity)}</td>
-                  {(["ok", "broken", "damaged"] as const).map((key) => (
-                    <td key={key}>
-                      <input
-                        inputMode="decimal"
-                        aria-label={key}
-                        value={String(row[key])}
-                        onChange={(event) => update(index, key, event.target.value)}
-                      />
-                    </td>
-                  ))}
-                  <td className={"num" + (missing ? " is-alert" : "")}>{qty(missing)}</td>
-                  <td>
-                    <input
-                      value={row.note}
-                      placeholder="Ex.: quinas lascadas"
-                      onChange={(event) => update(index, "note", event.target.value)}
-                    />
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-      <label className="space">
-        Observação da entrega
-        <input name="notes" placeholder="Motorista, nota fiscal, combinado com o fornecedor…" />
-      </label>
-      <div className="actions">
-        <button type="button" className="action" onClick={cancel}>
-          Voltar
-        </button>
-        <button className="action primary" disabled={action.busy}>
-          <CheckCircle2 size={16} /> Confirmar conferência
-        </button>
-      </div>
-    </form>
-  );
-}
-
-function OrderForm({ state, done }: { state: CommercialState; done: () => void }) {
-  const action = useAction(done);
-  const units = useMemo(
-    () =>
-      state.products
-        .filter((product) => !product.example)
-        .flatMap((product) =>
-          product.units.map((unit) => ({
-            value: unit.id,
-            product: product.id,
-            label: `${product.name} · ${unit.name}`,
-          })),
-        ),
-    [state.products],
-  );
-  const [items, setItems] = useState([{ unit: "", quantity: "", total: "" }]);
-  return (
-    <form
-      className="panel space"
-      onSubmit={(event) => {
-        event.preventDefault();
-        const form = new FormData(event.currentTarget);
-        void action.run(
-          () =>
-            sendStore("order", {
-              supplier_id: value(form, "supplier") || null,
-              reference: value(form, "reference"),
-              ordered_on: value(form, "ordered_on"),
-              expected_on: value(form, "expected_on") || null,
-              due_on: value(form, "due_on") || null,
-              freight: number(form, "freight") ?? 0,
-              other_costs: 0,
-              notes: "",
-              items: items
-                .filter((item) => item.unit && item.quantity)
-                .map((item) => ({
-                  product_id: units.find((unit) => unit.value === item.unit)?.product,
-                  unit_id: item.unit,
-                  quantity: Number(item.quantity.replace(",", ".")),
-                  goods_total: Number(item.total.replace(/\./g, "").replace(",", ".")) || 0,
-                })),
-            }),
-          "Pedido salvo. Quando a entrega chegar, é só marcar e conferir.",
-        );
-      }}
-    >
-      <h3>Novo pedido ao fornecedor</h3>
-      {action.feedback}
-      <div className="fields">
-        <label>
-          Fornecedor
-          <select name="supplier" defaultValue="">
-            <option value="">Não informado</option>
-            {state.suppliers.map((supplier) => (
-              <option key={supplier.id} value={supplier.id}>
-                {supplier.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Número / referência
-          <input name="reference" placeholder="Nota, pedido…" />
-        </label>
-        <label>
-          Data do pedido
-          <input name="ordered_on" type="date" defaultValue={localDay()} required />
-        </label>
-        <label>
-          Previsão de chegada
-          <input name="expected_on" type="date" />
-        </label>
-        <label>
-          Vencimento do pagamento
-          <input name="due_on" type="date" />
-        </label>
-        <label>
-          Frete
-          <input name="freight" inputMode="decimal" placeholder="0,00" />
-        </label>
-      </div>
-      {items.map((item, index) => (
-        <div className="line" key={index}>
-          <label>
-            Produto
-            <select
-              value={item.unit}
-              required={index === 0}
-              onChange={(event) =>
-                setItems(
-                  items.map((row, position) =>
-                    position === index ? { ...row, unit: event.target.value } : row,
-                  ),
-                )
-              }
-            >
-              <option value="">Escolha</option>
-              {units.map((unit) => (
-                <option key={unit.value} value={unit.value}>
-                  {unit.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Quantidade
-            <input
-              inputMode="decimal"
-              value={item.quantity}
-              required={index === 0}
-              onChange={(event) =>
-                setItems(
-                  items.map((row, position) =>
-                    position === index ? { ...row, quantity: event.target.value } : row,
-                  ),
-                )
-              }
-            />
-          </label>
-          <label>
-            Valor total do item
-            <input
-              inputMode="decimal"
-              value={item.total}
-              placeholder="0,00"
-              onChange={(event) =>
-                setItems(
-                  items.map((row, position) =>
-                    position === index ? { ...row, total: event.target.value } : row,
-                  ),
-                )
-              }
-            />
-          </label>
-        </div>
-      ))}
-      <div className="actions">
-        <button
-          type="button"
-          className="action"
-          onClick={() => setItems([...items, { unit: "", quantity: "", total: "" }])}
-        >
-          <Plus size={16} /> Mais um item
-        </button>
-        <button className="action primary" disabled={action.busy}>
-          Salvar pedido
-        </button>
-      </div>
-    </form>
   );
 }

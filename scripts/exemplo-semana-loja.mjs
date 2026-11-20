@@ -791,6 +791,41 @@ for (const [kind, person, description, amount, due_on, example, notes] of debts)
     notes,
   });
 
+// Fiado de exemplo lançado pelo sistema: cliente autorizado compra a prazo e paga uma parte.
+const bigode = await call("commercial/customer", {
+  name: "Bigode",
+  contact: "",
+  profile: "recorrente",
+  allow_credit: true,
+});
+const fiadoCash = await call("store/cash_open", { opening: 13 });
+await db.query("UPDATE preciso.commercial_cash_sessions SET opened_at=$1 WHERE id=$2", [
+  stamp("2026-11-18", "07:00"),
+  fiadoCash.id,
+]);
+const fiadoSale = await call("commercial/sale", {
+  customer_id: bigode.id,
+  items: lines([
+    [4, "gesso", 99.96],
+    [10, "placa", 51.9],
+  ]),
+  payments: [{ method: "dinheiro", amount: 50, reference: "Entrada", confirmed: true }],
+  freight: 0,
+  fees: 0,
+  taxes: 0,
+  other_costs: 0,
+});
+for (const table of ["commercial_sales", "commercial_payments", "commercial_movements"])
+  await db.query(
+    `UPDATE preciso.${table} SET created_at=$1 WHERE ${table === "commercial_sales" ? "id" : "sale_id"}=$2`,
+    [stamp("2026-11-18", "09:40"), fiadoSale.id],
+  );
+await call("store/cash_close", { counted: 63, notes: "" });
+await db.query("UPDATE preciso.commercial_cash_sessions SET closed_at=$1 WHERE id=$2", [
+  stamp("2026-11-18", "17:30"),
+  fiadoCash.id,
+]);
+
 const supplier = await call("commercial/supplier", {
   name: "Fornecedor de gesso (exemplo)",
   contact: "",
@@ -822,6 +857,7 @@ if (dumpFile || apply) {
     "commercial_products",
     "commercial_units",
     "commercial_price_rules",
+    "commercial_customers",
     "commercial_suppliers",
     "commercial_cash_sessions",
     "commercial_purchases",
