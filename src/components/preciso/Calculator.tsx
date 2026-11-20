@@ -194,6 +194,7 @@ export function Calculator() {
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
   const [open, setOpen] = useState(false);
+  const [step, setStep] = useState(0);
 
   useEffect(() => {
     let mounted = true;
@@ -250,13 +251,18 @@ export function Calculator() {
 
   function changeScope(next: Scope) {
     setScope(next);
+    setWorks([]);
+    setStep(1);
     setCounts({});
     setPlaces([]);
     setApprox("");
     if (!SCOPES[next].photos) setPhotos([]);
   }
   function togglePlace(place: string) {
-    if (config.single) return setPlaces(places[0] === place ? [] : [place]);
+    if (config.single) {
+      setPlaces([place]);
+      return setStep(step + 1);
+    }
     if (place === config.whole) return setPlaces(places.includes(place) ? [] : [place]);
     const rest = places.filter((item) => item !== config.whole);
     setPlaces(rest.includes(place) ? rest.filter((item) => item !== place) : [...rest, place]);
@@ -318,224 +324,315 @@ export function Calculator() {
     setOpen(true);
   }
 
+  type StepId = "tipo" | "contagem" | "lugar" | "servico" | "medidas" | "tamanho" | "fotos" | "fim";
+  const placeFirst = config.single;
+  const steps: StepId[] = [
+    "tipo",
+    ...(placeFirst ? (["lugar"] as StepId[]) : []),
+    ...(config.counts.length ? (["contagem"] as StepId[]) : []),
+    ...(placeFirst ? [] : (["lugar"] as StepId[])),
+    "servico",
+    ...(config.measures ? (["medidas"] as StepId[]) : []),
+    ...(config.approxArea ? (["tamanho"] as StepId[]) : []),
+    ...(config.photos ? (["fotos"] as StepId[]) : []),
+    "fim",
+  ];
+  const current = steps[Math.min(step, steps.length - 1)];
+  const last = steps.length - 1;
+  const canGo =
+    current === "lugar" ? places.length > 0 : current === "servico" ? works.length > 0 : true;
+  const next = () => setStep(Math.min(last, step + 1));
+  const back = () => setStep(Math.max(0, step - 1));
+  const answered = [
+    step > 0 ? config.label : "",
+    ...(steps.indexOf("contagem") < step && steps.includes("contagem")
+      ? config.counts.map((item) => `${count(item)} ${item.short.toLowerCase()}`)
+      : []),
+    steps.indexOf("lugar") < step ? places.join(", ") : "",
+    steps.indexOf("servico") < step ? works.join(", ") : "",
+    steps.includes("medidas") && steps.indexOf("medidas") < step
+      ? `${area.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} m²`
+      : "",
+  ].filter(Boolean);
+
   return (
     <>
-      <div id="orcamento" className="public-calculator p-6 sm:p-8 reveal">
-        <div className="flex justify-between items-start gap-4 mb-7">
+      <div id="orcamento" className="public-calculator quote-wizard p-6 sm:p-8 reveal">
+        <div className="flex justify-between items-start gap-4 mb-5">
           <div>
             <p className="eyebrow">Planeje seu investimento</p>
             <h2 className="text-2xl font-semibold tracking-tight mt-2">Seu projeto começa aqui.</h2>
           </div>
           <Ruler className="size-5 text-accent shrink-0" />
         </div>
-        <label htmlFor="project-scope" className="block text-xs text-muted-foreground mb-2">
-          Tipo de projeto
-        </label>
-        <select
-          id="project-scope"
-          value={scope}
-          onChange={(e) => changeScope(e.target.value as Scope)}
-          className="w-full rounded-xl bg-background border border-border p-3 text-base mb-5"
-        >
-          {(Object.keys(SCOPES) as Scope[]).map((key) => (
-            <option key={key} value={key}>
-              {SCOPES[key].label}
-            </option>
+        <div className="quote-progress" aria-hidden="true">
+          {steps.map((id, index) => (
+            <span key={id} className={index <= step ? "on" : undefined} />
           ))}
-        </select>
-        {config.counts.map((item) => (
-          <div key={item.key} className="quote-count">
-            <span>{item.label}</span>
-            <div>
-              <button
-                type="button"
-                aria-label={`Menos — ${item.label}`}
-                disabled={count(item) <= item.min}
-                onClick={() => setCounts({ ...counts, [item.key]: count(item) - 1 })}
-              >
-                <Minus className="size-4" />
-              </button>
-              <strong aria-live="polite">{count(item)}</strong>
-              <button
-                type="button"
-                aria-label={`Mais — ${item.label}`}
-                disabled={count(item) >= 500}
-                onClick={() => setCounts({ ...counts, [item.key]: count(item) + 1 })}
-              >
-                <Plus className="size-4" />
-              </button>
-            </div>
-          </div>
-        ))}
-        <fieldset className="quote-chips">
-          <legend>{config.placeTitle}</legend>
-          <div>
-            {[...(config.whole ? [config.whole] : []), ...config.places].map((place) => (
-              <button
-                key={place}
-                type="button"
-                aria-pressed={places.includes(place)}
-                className={place === config.whole ? "whole" : undefined}
-                onClick={() => togglePlace(place)}
-              >
-                {place}
-              </button>
+        </div>
+        <p className="quote-step-count">
+          Etapa {Math.min(step, last) + 1} de {steps.length}
+        </p>
+        {answered.length > 0 && (
+          <p className="quote-answered">
+            {answered.map((item) => (
+              <span key={item}>{item}</span>
             ))}
-          </div>
-        </fieldset>
-        <fieldset className="quote-chips">
-          <legend>O que você quer fazer?</legend>
-          <div>
-            {config.works.map((work) => (
-              <button
-                key={work}
-                type="button"
-                aria-pressed={works.includes(work)}
-                onClick={() => toggleWork(work)}
-              >
-                {work}
-              </button>
-            ))}
-          </div>
-        </fieldset>
-        {config.approxArea && (
-          <label className="block text-xs text-muted-foreground mb-5">
-            Tamanho aproximado em m² (opcional)
-            <input
-              inputMode="decimal"
-              type="number"
-              min="0"
-              step="1"
-              placeholder="Se não souber, deixe em branco"
-              value={approx}
-              onChange={(e) => setApprox(e.target.value)}
-              className="block w-full bg-background border border-border rounded-xl p-3 text-base mt-2"
-            />
-          </label>
+          </p>
         )}
-        {config.measures && (
-          <>
-            <div className="grid grid-cols-2 gap-4 mb-5">
-              {[
-                { id: "calc-height", label: "Altura (m)", value: height, set: setHeight },
-                { id: "calc-width", label: "Largura (m)", value: width, set: setWidth },
-              ].map((field) => (
-                <div key={field.id}>
-                  <label htmlFor={field.id} className="block text-xs text-muted-foreground mb-2">
-                    {field.label}
-                  </label>
-                  <input
-                    id={field.id}
-                    inputMode="decimal"
-                    type="number"
-                    min="0.01"
-                    max="1000000"
-                    step="0.01"
-                    value={field.value}
-                    onChange={(e) => field.set(e.target.value)}
-                    className="w-full min-w-0 bg-background border border-border rounded-xl p-4 font-mono text-xl focus:border-accent outline-none"
-                  />
+
+        <div className="quote-step" key={current + scope}>
+          {current === "tipo" && (
+            <fieldset className="quote-options">
+              <legend>Que tipo de serviço você precisa?</legend>
+              {(Object.keys(SCOPES) as Scope[]).map((key) => (
+                <button
+                  key={key}
+                  type="button"
+                  aria-pressed={scope === key && step > 0}
+                  onClick={() => changeScope(key)}
+                >
+                  <span>{SCOPES[key].label}</span>
+                  <ArrowRight className="size-4" />
+                </button>
+              ))}
+            </fieldset>
+          )}
+
+          {current === "contagem" && (
+            <div>
+              {config.counts.map((item) => (
+                <div key={item.key} className="quote-count">
+                  <span>{item.label}</span>
+                  <div>
+                    <button
+                      type="button"
+                      aria-label={`Menos — ${item.label}`}
+                      disabled={count(item) <= item.min}
+                      onClick={() => setCounts({ ...counts, [item.key]: count(item) - 1 })}
+                    >
+                      <Minus className="size-4" />
+                    </button>
+                    <strong aria-live="polite">{count(item)}</strong>
+                    <button
+                      type="button"
+                      aria-label={`Mais — ${item.label}`}
+                      disabled={count(item) >= 500}
+                      onClick={() => setCounts({ ...counts, [item.key]: count(item) + 1 })}
+                    >
+                      <Plus className="size-4" />
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
-            <div className="flex justify-between text-xs text-muted-foreground border-b border-border pb-4 mb-5">
-              <span>Área informada</span>
-              <span className="font-mono text-foreground">
-                {area.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} m²
-              </span>
-            </div>
-            <label htmlFor="calc-service" className="block text-xs text-muted-foreground mb-2">
-              Serviço para a estimativa
-            </label>
-            {loading ? (
-              <div
-                className="h-12 rounded-xl bg-muted animate-pulse"
-                role="status"
-                aria-label="Carregando serviços"
-              />
-            ) : failed || !services.length ? (
-              <div className="flex gap-2 text-sm text-muted-foreground border border-border rounded-xl p-4">
-                <AlertCircle className="size-4 shrink-0 mt-0.5" />
-                {failed
-                  ? "Não foi possível consultar os preços. Solicite uma avaliação técnica."
-                  : "Os preços estão sendo preparados. Solicite uma avaliação técnica."}
-              </div>
-            ) : (
-              <select
-                id="calc-service"
-                value={serviceId}
-                onChange={(e) => setServiceId(e.target.value)}
-                className="w-full bg-background border border-border rounded-xl p-3 text-base"
-              >
-                {services.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
-            )}
-          </>
-        )}
-        {config.photos ? (
-          <div className="quote-photos">
-            <p>
-              Fotos do local <small>(até {MAX_PHOTOS}, opcional)</small>
-            </p>
-            <div>
-              {photos.map((photo, index) => (
-                <figure key={index}>
-                  <img src={photo} alt={`Foto ${index + 1} do local`} />
+          )}
+
+          {current === "lugar" && (
+            <fieldset className="quote-chips">
+              <legend>{config.placeTitle}</legend>
+              {!config.single && <p className="quote-hint">Pode marcar mais de um.</p>}
+              <div>
+                {[...(config.whole ? [config.whole] : []), ...config.places].map((place) => (
                   <button
+                    key={place}
                     type="button"
-                    aria-label={`Tirar foto ${index + 1}`}
-                    onClick={() => setPhotos(photos.filter((_, item) => item !== index))}
+                    aria-pressed={places.includes(place)}
+                    className={place === config.whole ? "whole" : undefined}
+                    onClick={() => togglePlace(place)}
                   >
-                    <X className="size-3.5" />
+                    {place}
                   </button>
-                </figure>
-              ))}
-              {photos.length < MAX_PHOTOS && (
-                <label className={photoBusy ? "busy" : undefined}>
-                  <Camera className="size-5" />
-                  <span>{photoBusy ? "Preparando…" : "Adicionar"}</span>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    disabled={photoBusy}
-                    onChange={(event) => void addPhotos(event)}
-                  />
+                ))}
+              </div>
+            </fieldset>
+          )}
+
+          {current === "servico" && (
+            <fieldset className="quote-chips">
+              <legend>O que você quer fazer?</legend>
+              <p className="quote-hint">Pode marcar mais de um.</p>
+              <div>
+                {config.works.map((work) => (
+                  <button
+                    key={work}
+                    type="button"
+                    aria-pressed={works.includes(work)}
+                    onClick={() => toggleWork(work)}
+                  >
+                    {work}
+                  </button>
+                ))}
+              </div>
+            </fieldset>
+          )}
+
+          {current === "medidas" && (
+            <div>
+              <p className="quote-question">Qual o tamanho mais ou menos?</p>
+              <div className="grid grid-cols-2 gap-4 mb-4">
+                {[
+                  { id: "calc-height", label: "Altura (m)", value: height, set: setHeight },
+                  { id: "calc-width", label: "Largura (m)", value: width, set: setWidth },
+                ].map((field) => (
+                  <div key={field.id}>
+                    <label htmlFor={field.id} className="block text-xs text-muted-foreground mb-2">
+                      {field.label}
+                    </label>
+                    <input
+                      id={field.id}
+                      inputMode="decimal"
+                      type="number"
+                      min="0.01"
+                      max="1000000"
+                      step="0.01"
+                      value={field.value}
+                      onChange={(e) => field.set(e.target.value)}
+                      className="w-full min-w-0 bg-background border border-border rounded-xl p-4 font-mono text-xl focus:border-accent outline-none"
+                    />
+                  </div>
+                ))}
+              </div>
+              <div className="flex justify-between text-xs text-muted-foreground border-b border-border pb-4 mb-4">
+                <span>Área informada</span>
+                <span className="font-mono text-foreground">
+                  {area.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} m²
+                </span>
+              </div>
+              {loading ? (
+                <div
+                  className="h-12 rounded-xl bg-muted animate-pulse"
+                  role="status"
+                  aria-label="Carregando serviços"
+                />
+              ) : !failed && services.length > 0 ? (
+                <label className="block text-xs text-muted-foreground">
+                  Serviço para a estimativa
+                  <select
+                    id="calc-service"
+                    value={serviceId}
+                    onChange={(e) => setServiceId(e.target.value)}
+                    className="block w-full bg-background border border-border rounded-xl p-3 text-base mt-2"
+                  >
+                    {services.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.name}
+                      </option>
+                    ))}
+                  </select>
                 </label>
-              )}
+              ) : null}
             </div>
-            {photoError && (
-              <p className="quote-error" role="alert">
-                {photoError}
+          )}
+
+          {current === "tamanho" && (
+            <label className="block">
+              <span className="quote-question">Sabe o tamanho aproximado? (opcional)</span>
+              <input
+                inputMode="decimal"
+                type="number"
+                min="0"
+                step="1"
+                placeholder="Em m². Se não souber, deixe em branco"
+                value={approx}
+                onChange={(e) => setApprox(e.target.value)}
+                className="block w-full bg-background border border-border rounded-xl p-3 text-base mt-2"
+              />
+              <p className="quote-note mt-4">{config.note}</p>
+            </label>
+          )}
+
+          {current === "fotos" && (
+            <div className="quote-photos">
+              <p className="quote-question">
+                Fotos do local <small>(até {MAX_PHOTOS}, opcional)</small>
               </p>
-            )}
-            <small>{config.note}</small>
-          </div>
-        ) : (
-          <p className="quote-note">{config.note}</p>
-        )}
-        <div className="mt-6 rounded-2xl border border-accent/15 bg-accent/5 p-5">
-          <p className="eyebrow">{custom ? "Proposta personalizada" : "Estimativa preliminar"}</p>
-          <p aria-live="polite" className="text-3xl sm:text-4xl tracking-tight font-semibold mt-2">
-            {custom ? "Vamos avaliar juntos." : money(total)}
-          </p>
-          <p className="text-xs text-muted-foreground leading-relaxed mt-3">
-            {custom
-              ? "Obras completas, fachadas e grandes áreas exigem levantamento técnico, logística, etapas e materiais. O valor será definido após avaliação."
-              : `Referência de ${money(Number(selected?.price_per_m2))}/m². Sujeita à validação das medidas, condições da superfície e escopo na visita técnica.`}
-          </p>
+              <div>
+                {photos.map((photo, index) => (
+                  <figure key={index}>
+                    <img src={photo} alt={`Foto ${index + 1} do local`} />
+                    <button
+                      type="button"
+                      aria-label={`Tirar foto ${index + 1}`}
+                      onClick={() => setPhotos(photos.filter((_, item) => item !== index))}
+                    >
+                      <X className="size-3.5" />
+                    </button>
+                  </figure>
+                ))}
+                {photos.length < MAX_PHOTOS && (
+                  <label className={photoBusy ? "busy" : undefined}>
+                    <Camera className="size-5" />
+                    <span>{photoBusy ? "Preparando…" : "Adicionar"}</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      disabled={photoBusy}
+                      onChange={(event) => void addPhotos(event)}
+                    />
+                  </label>
+                )}
+              </div>
+              {photoError && (
+                <p className="quote-error" role="alert">
+                  {photoError}
+                </p>
+              )}
+              <small>{config.note}</small>
+            </div>
+          )}
+
+          {current === "fim" && (
+            <div>
+              <div className="rounded-2xl border border-accent/15 bg-accent/5 p-5">
+                <p className="eyebrow">
+                  {custom ? "Proposta personalizada" : "Estimativa preliminar"}
+                </p>
+                <p
+                  aria-live="polite"
+                  className="text-3xl sm:text-4xl tracking-tight font-semibold mt-2"
+                >
+                  {custom ? "Vamos avaliar juntos." : money(total)}
+                </p>
+                <p className="text-xs text-muted-foreground leading-relaxed mt-3">
+                  {custom
+                    ? "O valor sai depois da visita técnica, quando o profissional vê o local, as medidas e o material."
+                    : `Referência de ${money(Number(selected?.price_per_m2))}/m². Sujeita à validação das medidas, condições da superfície e escopo na visita técnica.`}
+                </p>
+              </div>
+              <ul className="quote-summary">
+                {summary.map((line) => (
+                  <li key={line}>{line}</li>
+                ))}
+              </ul>
+              <button type="button" onClick={requestVisit} className="gold-button w-full mt-5">
+                {custom ? <Building2 className="size-4" /> : null}Solicitar visita técnica
+                <ArrowRight className="size-4" />
+              </button>
+              <p className="text-[11px] text-muted-foreground text-center mt-3">
+                A simulação não substitui a proposta técnica definitiva.
+              </p>
+            </div>
+          )}
         </div>
-        <button type="button" onClick={requestVisit} className="gold-button w-full mt-5">
-          {custom ? <Building2 className="size-4" /> : null}Solicitar visita técnica
-          <ArrowRight className="size-4" />
-        </button>
-        <p className="text-[11px] text-muted-foreground text-center mt-3">
-          A simulação não substitui a proposta técnica definitiva.
-        </p>
+
+        {step > 0 && current !== "fim" && (
+          <div className="quote-nav">
+            <button type="button" className="quote-back" onClick={back}>
+              Voltar
+            </button>
+            <button type="button" className="gold-button" disabled={!canGo} onClick={next}>
+              {current === "fotos" || current === "tamanho" ? "Ver resultado" : "Continuar"}
+              <ArrowRight className="size-4" />
+            </button>
+          </div>
+        )}
+        {current === "fim" && (
+          <button type="button" className="quote-back quote-restart" onClick={back}>
+            Voltar e mudar respostas
+          </button>
+        )}
       </div>
       <ScheduleDialog
         open={open}

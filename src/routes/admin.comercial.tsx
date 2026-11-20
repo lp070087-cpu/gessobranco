@@ -83,7 +83,7 @@ function Commercial() {
   const [reportPeriod, setReportPeriod] = useState({ start: monthStart(), end: localDay() });
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
-  const [loading, setLoading] = useState(!(cachedUser && storeCache.state));
+  const [loading, setLoading] = useState(!cachedUser);
   const [busy, setBusy] = useState(false);
   const [pending, setPending] = useState<Pending | null>(null);
   const [start, setStart] = useState(monthStart);
@@ -91,6 +91,12 @@ function Commercial() {
   const locked = useRef(false);
   const pendingOperation = useRef<Pending | null>(null);
   const [editing, setEditing] = useState<Product | "new" | null>(null);
+  const openEditor = (next: Product | "new") => {
+    setEditing(next);
+    requestAnimationFrame(() =>
+      document.getElementById("editor-produto")?.scrollIntoView({ block: "start" }),
+    );
+  };
 
   async function loadReport(from: string, to: string, signal?: AbortSignal) {
     const result = await commercialFetch<Report>(
@@ -472,55 +478,20 @@ function Commercial() {
             {tab === "Vender" && <CommercialSales state={state} command={command} />}
             {tab === "Produtos" && (
               <>
-                <section className="panel">
-                  <h2>Produtos e unidades</h2>
-                  <button className="action primary" onClick={() => setEditing("new")}>
-                    Cadastrar produto
-                  </button>
-                  <div className="table-scroll">
-                    <table>
-                      <thead>
-                        <tr>
-                          <th>Produto</th>
-                          <th>Estoque</th>
-                          <th>Unidades e preços padrão</th>
-                          <th>Site</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {state.products.map((product) => (
-                          <tr key={product.id}>
-                            <td>
-                              <button onClick={() => setEditing(product)}>{product.name}</button>
-                              {product.example && (
-                                <p className="hint">Exemplo inativo · confirme peso e preços</p>
-                              )}
-                            </td>
-                            <td>
-                              {quantityBR(product.balance)} {product.base_unit}
-                            </td>
-                            <td>
-                              {product.units.map((unit) => (
-                                <p key={unit.id}>
-                                  {unit.name} = {quantityBR(unit.factor)} {product.base_unit} ·{" "}
-                                  {unit.price === null ? "Sem preço" : moneyBR(unit.price)}
-                                </p>
-                              ))}
-                            </td>
-                            <td>{product.published ? "Publicado" : "Oculto"}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </section>
+                <ProductCards
+                  products={state.products}
+                  create={() => openEditor("new")}
+                  edit={(product) => openEditor(product)}
+                />
                 {editing && (
-                  <ProductEditor
-                    key={editing === "new" ? "new" : editing.id}
-                    product={editing === "new" ? undefined : editing}
-                    command={command}
-                    close={() => setEditing(null)}
-                  />
+                  <div id="editor-produto">
+                    <ProductEditor
+                      key={editing === "new" ? "new" : editing.id}
+                      product={editing === "new" ? undefined : editing}
+                      command={command}
+                      close={() => setEditing(null)}
+                    />
+                  </div>
                 )}
                 <details>
                   <summary>Preços por cliente, perfil ou quantidade</summary>
@@ -633,10 +604,12 @@ function Commercial() {
             )}
             {tab === "Estoque" && (
               <>
-                <div className="notice">
-                  Sacos, frações e quilos movimentam o mesmo saldo físico. Informe sempre a unidade
-                  usada na contagem. Ajustes e perdas exigem motivo.
-                </div>
+                <StockBalances products={state.products} />
+                <StockGuide />
+                <p className="notice space">
+                  Saco, meio saco e quilo mexem no mesmo saldo. Escolha a unidade que você usou para
+                  contar.
+                </p>
                 <CommandForm
                   title="Ajustar estoque ou registrar contagem"
                   kind="adjustment"
@@ -675,47 +648,48 @@ function Commercial() {
                   extra={(data) => ({ ...data, product_id: productForUnit(state, data.unit_id) })}
                 />
                 <section className="panel space">
-                  <h2>Últimas 500 movimentações</h2>
-                  <div className="table-scroll">
-                    <table>
-                      <thead>
-                        <tr>
-                          <th>Data</th>
-                          <th>Produto</th>
-                          <th>Quantidade-base</th>
-                          <th>Operação</th>
-                          <th>Motivo</th>
-                          <th>Responsável</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {state.movements.map((movement) => (
-                          <tr key={movement.id}>
-                            <td>{new Date(movement.created_at).toLocaleString("pt-BR")}</td>
-                            <td>
+                  <h2>Últimas movimentações</h2>
+                  {state.movements.length === 0 && (
+                    <p className="hint">Nenhuma movimentação ainda.</p>
+                  )}
+                  <ul className="movement-list">
+                    {state.movements.slice(0, 200).map((movement) => (
+                      <li key={movement.id}>
+                        <span className="movement-main">
+                          <strong>
+                            {state.products.find((product) => product.id === movement.product_id)
+                              ?.name ?? "Produto"}
+                          </strong>
+                          <small>
+                            {(
                               {
-                                state.products.find((product) => product.id === movement.product_id)
-                                  ?.name
-                              }
-                            </td>
-                            <td>{quantityBR(movement.quantity)}</td>
-                            <td>
-                              {(
-                                {
-                                  purchase: "Compra",
-                                  sale: "Venda",
-                                  return: "Devolução",
-                                  adjustment: "Inventário/ajuste",
-                                } as Record<string, string>
-                              )[movement.kind] ?? movement.kind}
-                            </td>
-                            <td>{movement.reason}</td>
-                            <td>{movement.actor_id}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                                purchase: "Compra",
+                                sale: "Venda",
+                                return: "Devolução",
+                                adjustment: "Ajuste ou contagem",
+                              } as Record<string, string>
+                            )[movement.kind] ?? movement.kind}
+                            {movement.reason ? " · " + movement.reason : ""}
+                          </small>
+                        </span>
+                        <span className="movement-side">
+                          <b className={Number(movement.quantity) < 0 ? "neg" : "pos"}>
+                            {Number(movement.quantity) > 0 ? "+" : ""}
+                            {quantityBR(movement.quantity)}
+                          </b>
+                          <small>
+                            {new Date(movement.created_at).toLocaleString("pt-BR", {
+                              day: "2-digit",
+                              month: "2-digit",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                              timeZone: "America/Sao_Paulo",
+                            })}
+                          </small>
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
                 </section>
               </>
             )}
@@ -981,3 +955,4 @@ function Commercial() {
   );
 }
 import { LoadingSkeleton, PanelSkeleton } from "@/components/preciso/LoadingSkeleton";
+import { ProductCards, StockBalances, StockGuide } from "@/components/preciso/StoreProducts";

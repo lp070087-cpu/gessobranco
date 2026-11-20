@@ -780,7 +780,7 @@ export function WeekSheet({ openDay }: { openDay: (day: string) => void }) {
             <h3>Estoque parado na loja</h3>
             <p className="hint">Quantidade atual × custo de compra. Total {brl(stockValue)}.</p>
             <div className="table-scroll">
-              <table className="sheet-table">
+              <table className="sheet-table stack-mobile">
                 <thead>
                   <tr>
                     <th>Produto</th>
@@ -794,12 +794,18 @@ export function WeekSheet({ openDay }: { openDay: (day: string) => void }) {
                   {data.stock.map((item) => (
                     <tr key={item.id}>
                       <td>{item.name}</td>
-                      <td className="num">
+                      <td className="num" data-label="Quantidade">
                         {qty(item.balance)} {item.base_unit}
                       </td>
-                      <td className="num">{brl(item.unit_cost, "A informar")}</td>
-                      <td className="num">{brl(item.value, "A informar")}</td>
-                      <td className="num">{brl(item.price, "Sem preço")}</td>
+                      <td className="num" data-label="Custo">
+                        {brl(item.unit_cost, "A informar")}
+                      </td>
+                      <td className="num" data-label="Valor">
+                        {brl(item.value, "A informar")}
+                      </td>
+                      <td className="num" data-label="Preço de venda">
+                        {brl(item.price, "Sem preço")}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

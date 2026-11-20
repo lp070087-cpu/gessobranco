@@ -108,7 +108,7 @@ export function CommercialSales({ state, command }: { state: CommercialState; co
     <>
       {!state.cash && (
         <div className="notice">
-          Abra o caixa na aba Caixa antes de registrar vendas e pagamentos.
+          Abra o caixa na Folha do dia antes de registrar vendas e pagamentos.
         </div>
       )}
       <div className="grid">

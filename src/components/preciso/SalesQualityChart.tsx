@@ -30,6 +30,9 @@ const axisCurrency = new Intl.NumberFormat("pt-BR", {
   maximumFractionDigits: 2,
 });
 
+// Gráfico guardado entre as telas, para não piscar ao voltar à Visão geral.
+const qualityCache: { loaded: { route: string; chart: SalesQuality } | null } = { loaded: null };
+
 export function SalesQualityChart({
   period,
   report,
@@ -37,7 +40,9 @@ export function SalesQualityChart({
   period: { start: string; end: string };
   report: Report | null;
 }) {
-  const [loaded, setLoaded] = useState<{ route: string; chart: SalesQuality } | null>(null);
+  const [loaded, setLoaded] = useState<{ route: string; chart: SalesQuality } | null>(
+    qualityCache.loaded,
+  );
   const [settings, setSettings] = useState<QualityThresholds | null>(null);
   const [revision, setRevision] = useState(0);
   const [error, setError] = useState("");
@@ -66,7 +71,8 @@ export function SalesQualityChart({
     void commercialFetch<SalesQuality>(route, undefined, controller.signal)
       .then((next) => {
         if (!controller.signal.aborted) {
-          setLoaded({ route, chart: next });
+          qualityCache.loaded = { route, chart: next };
+          setLoaded(qualityCache.loaded);
           setError("");
         }
       })

@@ -1,3 +1,4 @@
+import { ExampleCards } from "@/components/preciso/ExampleCards";
 import { useState } from "react";
 import { importColumns, readCsv, previewProductImport } from "@/lib/commercial-import";
 import { moneyBR, type CommercialState } from "@/lib/commercial-client";
@@ -342,6 +343,33 @@ export function CommercialImport({ state, command }: { state: CommercialState; c
             </>
           )}
         </>
+      )}
+      {!rows.length && (
+        <ExampleCards
+          inline
+          title="Como fica a planilha"
+          hint="Cada linha é um produto. Depois de enviar, o sistema mostra a prévia, você confere e só então importa."
+          cards={[
+            {
+              title: "Placa de gesso 65x65",
+              tag: "Linha 2",
+              value: "R$ 5,19",
+              lines: ["Categoria: Gesso", "Unidade: placa", "Conversão: 1"],
+            },
+            {
+              title: "Bloco divisório de gesso",
+              tag: "Linha 3",
+              value: "R$ 13,99",
+              lines: ["Categoria: Gesso", "Unidade: bloco", "Conversão: 1"],
+            },
+            {
+              title: "Gesso cola 5kg",
+              tag: "Linha 4",
+              value: "R$ 14,99",
+              lines: ["Categoria: Materiais", "Unidade: saco", "Conversão: 1"],
+            },
+          ]}
+        />
       )}
     </section>
   );

@@ -1404,3 +1404,145 @@
   font-size: 12px;
   margin-bottom: 6px;
 }
+
+/* Simulador em etapas */
+.quote-wizard .quote-progress {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+.quote-wizard .quote-progress span {
+  flex: 1;
+  height: 4px;
+  border-radius: 99px;
+  background: var(--border);
+  transition: background 0.25s ease;
+}
+.quote-wizard .quote-progress span.on {
+  background: var(--accent);
+}
+.quote-wizard .quote-step-count {
+  font-size: 12px;
+  color: var(--muted-foreground);
+  margin-bottom: 10px;
+}
+.quote-wizard .quote-answered {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+.quote-wizard .quote-answered span {
+  font-size: 12px;
+  padding: 3px 10px;
+  border-radius: 99px;
+  background: rgba(127, 110, 60, 0.1);
+  color: var(--foreground);
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.quote-wizard .quote-step {
+  animation: quote-in 0.22s ease both;
+}
+@keyframes quote-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .quote-wizard .quote-step {
+    animation: none;
+  }
+}
+.quote-wizard .quote-question,
+.quote-wizard .quote-options legend,
+.quote-wizard .quote-chips legend {
+  display: block;
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--foreground);
+  margin-bottom: 12px;
+}
+.quote-wizard .quote-hint {
+  font-size: 12px;
+  color: var(--muted-foreground);
+  margin: -6px 0 10px;
+}
+.quote-wizard .quote-options {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+}
+.quote-wizard .quote-options button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 54px;
+  padding: 12px 16px;
+  text-align: left;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--background);
+  font-size: 15px;
+  touch-action: manipulation;
+}
+.quote-wizard .quote-options button[aria-pressed="true"] {
+  border-color: #292c27;
+  box-shadow: inset 0 0 0 1px #292c27;
+}
+.quote-wizard .quote-options button svg {
+  flex-shrink: 0;
+  opacity: 0.5;
+}
+.quote-wizard .quote-nav {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 10px;
+  margin-top: 22px;
+}
+.quote-wizard .quote-nav .gold-button {
+  margin: 0;
+}
+.quote-wizard .quote-nav .gold-button:disabled {
+  opacity: 0.4;
+}
+.quote-wizard .quote-back {
+  min-height: 52px;
+  padding: 0 18px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: transparent;
+  font-size: 14px;
+}
+.quote-wizard .quote-restart {
+  width: 100%;
+  margin-top: 10px;
+  min-height: 44px;
+  border: 0;
+  text-decoration: underline;
+  color: var(--muted-foreground);
+}
+.quote-wizard .quote-summary {
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+  color: var(--muted-foreground);
+}
+.quote-wizard .quote-summary li {
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+  overflow-wrap: anywhere;
+}
+.editorial-site .public-calculator .quote-chips button[aria-pressed="true"],
+.public-calculator .quote-chips button[aria-pressed="true"]:hover {
+  background: #292c27;
+  border-color: #292c27;
+  color: #fff;
+}

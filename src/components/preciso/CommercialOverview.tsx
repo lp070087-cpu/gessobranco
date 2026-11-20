@@ -39,6 +39,10 @@ const formatDate = new Intl.DateTimeFormat("pt-BR", {
 });
 const localDate = (day: string) => formatDate.format(new Date(day + "T12:00:00Z"));
 
+const overviewCache: { result: { endpoint: string; overview: Overview } | null } = {
+  result: null,
+};
+
 export function CommercialOverview({
   state,
   report,
@@ -60,7 +64,9 @@ export function CommercialOverview({
 }) {
   const { start, end } = period;
   const endpoint = `commercial/overview?start=${start}&end=${end}`;
-  const [result, setResult] = useState<{ endpoint: string; overview: Overview } | null>(null);
+  const [result, setResult] = useState<{ endpoint: string; overview: Overview } | null>(
+    overviewCache.result,
+  );
   const [error, setError] = useState("");
   const [revision, setRevision] = useState(0);
   const overview = result?.endpoint === endpoint ? result.overview : null;
@@ -69,7 +75,8 @@ export function CommercialOverview({
     void commercialFetch<Overview>(endpoint, undefined, controller.signal)
       .then((overview) => {
         if (!controller.signal.aborted) {
-          setResult({ endpoint, overview });
+          overviewCache.result = { endpoint, overview };
+          setResult(overviewCache.result);
           setError("");
         }
       })

@@ -2,6 +2,13 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { commercialFetch, localDay, moneyBR } from "@/lib/commercial-client";
 import { readDocument } from "@/lib/document-import";
 import { photoAccept, preparePhoto } from "@/lib/photo-upload";
+import {
+  CategoryAdder,
+  VehicleManager,
+  useExpenseSetup,
+  usesVehicle,
+  vehicleLabel,
+} from "@/components/preciso/ExpenseSetup";
 
 const labels = ["Combustível", "Materiais", "Frete", "Serviços", "Outras despesas"];
 type Expense = {
@@ -12,6 +19,9 @@ type Expense = {
   paid_on: string | null;
   category: string;
   receipt: boolean;
+  vehicle_id: string | null;
+  project_id: string | null;
+  service_note: string | null;
 };
 
 export function OwnerExpenses({ saved }: { saved: () => void }) {
@@ -25,6 +35,13 @@ export function OwnerExpenses({ saved }: { saved: () => void }) {
   const [date, setDate] = useState(localDay);
   const [category, setCategory] = useState(labels[4]);
   const [paid, setPaid] = useState(false);
+  const [vehicle, setVehicle] = useState("");
+  const [project, setProject] = useState("");
+  const [serviceNote, setServiceNote] = useState("");
+  const { setup, refresh: refreshSetup } = useExpenseSetup();
+  const categories = setup?.categories ?? labels;
+  const vehicles = setup?.vehicles ?? [];
+  const projects = setup?.projects ?? [];
   const [reading, setReading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -120,6 +137,9 @@ export function OwnerExpenses({ saved }: { saved: () => void }) {
       category,
       paid,
       ...(photo ? { photo } : {}),
+      ...(usesVehicle(category) && vehicle ? { vehicle_id: vehicle } : {}),
+      ...(project && project !== "outro" ? { project_id: project } : {}),
+      ...(project === "outro" && serviceNote.trim() ? { service_note: serviceNote.trim() } : {}),
     };
     const payload = JSON.stringify(input);
     if (retry.current?.payload !== payload) retry.current = { payload, id: crypto.randomUUID() };
@@ -132,6 +152,9 @@ export function OwnerExpenses({ saved }: { saved: () => void }) {
       setAmount("");
       setPaid(false);
       setCategory(labels[4]);
+      setVehicle("");
+      setProject("");
+      setServiceNote("");
       setDate(localDay());
       form.reset();
       retry.current = null;
@@ -213,11 +236,49 @@ export function OwnerExpenses({ saved }: { saved: () => void }) {
               <label>
                 Categoria{" "}
                 <select value={category} onChange={(event) => setCategory(event.target.value)}>
-                  {labels.map((item) => (
+                  {categories.map((item) => (
                     <option key={item}>{item}</option>
                   ))}
                 </select>
               </label>
+              {usesVehicle(category) && (
+                <label>
+                  Qual carro?{" "}
+                  <select value={vehicle} onChange={(event) => setVehicle(event.target.value)}>
+                    <option value="">
+                      {vehicles.length ? "Escolha o carro" : "Cadastre o carro abaixo"}
+                    </option>
+                    {vehicles.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {vehicleLabel(item)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              <label>
+                Para qual serviço?{" "}
+                <select value={project} onChange={(event) => setProject(event.target.value)}>
+                  <option value="">Gasto da loja (nenhum serviço)</option>
+                  {projects.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.title}
+                    </option>
+                  ))}
+                  <option value="outro">Outro serviço (escrever)</option>
+                </select>
+              </label>
+              {project === "outro" && (
+                <label>
+                  Nome do serviço{" "}
+                  <input
+                    maxLength={120}
+                    placeholder="Ex.: Forro da casa da Maria"
+                    value={serviceNote}
+                    onChange={(event) => setServiceNote(event.target.value)}
+                  />
+                </label>
+              )}
               <label>
                 Valor (R$){" "}
                 <input
@@ -239,6 +300,14 @@ export function OwnerExpenses({ saved }: { saved: () => void }) {
                   onChange={(event) => setDate(event.target.value)}
                 />
               </label>
+            </div>
+            <div className="actions">
+              <CategoryAdder
+                added={(name) => {
+                  refreshSetup();
+                  setCategory(name);
+                }}
+              />
             </div>
             <label className="check">
               <input
@@ -274,10 +343,23 @@ export function OwnerExpenses({ saved }: { saved: () => void }) {
         {!rows && !error && <PanelSkeleton label="Carregando despesas…" />}
         {rows?.length === 0 && <p className="hint">Nenhum lançamento neste painel.</p>}
         {rows?.map((item) => (
-          <div key={item.id} className="actions space">
-            <span>
-              {item.description} · {item.category} · {moneyBR(item.amount)} ·{" "}
-              {item.paid_on ? "Pago" : "Em aberto"}
+          <div key={item.id} className="expense-row">
+            <span className="expense-main">
+              <strong>{item.description}</strong>
+              <small>
+                {item.category}
+                {item.vehicle_id &&
+                  vehicles.find((car) => car.id === item.vehicle_id) &&
+                  " · " + vehicleLabel(vehicles.find((car) => car.id === item.vehicle_id)!)}
+                {item.project_id &&
+                  " · " +
+                    (projects.find((work) => work.id === item.project_id)?.title ?? "Serviço")}
+                {item.service_note && " · " + item.service_note}
+              </small>
+            </span>
+            <span className="expense-side">
+              <b>{moneyBR(item.amount)}</b>
+              <small>{item.paid_on ? "Pago" : "Em aberto"}</small>
             </span>
             {item.receipt && (
               <a
@@ -292,6 +374,7 @@ export function OwnerExpenses({ saved }: { saved: () => void }) {
           </div>
         ))}
       </section>
+      <VehicleManager vehicles={vehicles} changed={refreshSetup} />
     </>
   );
 }

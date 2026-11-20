@@ -81,6 +81,44 @@ const units = {
   project: "Projeto",
   quote: "Sob orçamento",
 };
+const unitShort = {
+  m2: "m²",
+  linear: "metro",
+  unit: "unidade",
+  day: "diária",
+  project: "projeto",
+  quote: "orçamento",
+};
+const serviceExamples: (Partial<Service> & { name: string; hint: string })[] = [
+  {
+    name: "Forro de gesso liso",
+    category: "Forro",
+    billingUnit: "m2",
+    pricePerM2: 45,
+    hint: "Cobrado pela área do teto",
+  },
+  {
+    name: "Sanca aberta com luz",
+    category: "Sanca",
+    billingUnit: "linear",
+    pricePerM2: 60,
+    hint: "Cobrado por metro de sanca",
+  },
+  {
+    name: "Parede de drywall",
+    category: "Parede e divisória",
+    billingUnit: "m2",
+    pricePerM2: 95,
+    hint: "Cobrado pela área da parede",
+  },
+  {
+    name: "Moldura e roda-teto",
+    category: "Acabamento",
+    billingUnit: "linear",
+    pricePerM2: 25,
+    hint: "Cobrado por metro de moldura",
+  },
+];
 const blank: Service = {
   key: "",
   name: "",
@@ -96,8 +134,10 @@ const blank: Service = {
   sortOrder: 0,
 };
 
+// Listas guardadas entre as telas, para a troca de aba não mostrar carregamento.
+const rowsCache = new Map<string, unknown>();
 function useRows<T>(path: string) {
-  const [rows, setRows] = useState<T | null>(null);
+  const [rows, setRows] = useState<T | null>((rowsCache.get(path) as T | undefined) ?? null);
   const [error, setError] = useState("");
   const [revision, setRevision] = useState(0);
   useEffect(() => {
@@ -105,6 +145,7 @@ function useRows<T>(path: string) {
     void commercialFetch<T>(path, undefined, controller.signal)
       .then((value) => {
         if (!controller.signal.aborted) {
+          rowsCache.set(path, value);
           setRows(value);
           setError("");
         }
@@ -195,7 +236,7 @@ function ServiceEditor({
     }
   }
   return (
-    <section className="panel space">
+    <section className="panel space" id="editor-servico">
       <h2>{edit.id ? "Editar serviço" : "Cadastrar serviço"}</h2>
       <OperationForm
         label="Salvar serviço"
@@ -416,7 +457,16 @@ function Catalogue() {
       <section className="panel">
         <h2>Catálogo de serviços</h2>
         <div className="actions">
-          <button type="button" className="action primary" onClick={() => setEdit(blank)}>
+          <button
+            type="button"
+            className="action primary"
+            onClick={() => {
+              setEdit(blank);
+              requestAnimationFrame(() =>
+                document.getElementById("editor-servico")?.scrollIntoView({ block: "start" }),
+              );
+            }}
+          >
             Cadastrar serviço
           </button>
           <a className="action" href="#categorias-servicos">
@@ -429,18 +479,34 @@ function Catalogue() {
           </p>
         )}
         {!rows && !error && <PanelSkeleton label="Carregando catálogo…" />}
-        {rows?.map((service) => (
-          <div className="actions" key={service.id}>
-            <span>
-              {service.name} ·{" "}
-              {service.billingUnit === "quote" ? "Sob orçamento" : moneyBR(service.pricePerM2)} ·{" "}
-              {service.isActive && service.available ? "Disponível" : "Indisponível"}
-            </span>
-            <button type="button" className="action" onClick={() => setEdit(service)}>
-              Editar
-            </button>
+        {rows && rows.length > 0 && (
+          <div className="service-cards">
+            {rows.map((service) => (
+              <article className="service-card" key={service.id}>
+                <strong>{service.name}</strong>
+                <small>{service.category || "Sem categoria"}</small>
+                <span className="price">
+                  {service.billingUnit === "quote"
+                    ? "Sob orçamento"
+                    : `${moneyBR(service.pricePerM2)} / ${unitShort[service.billingUnit as keyof typeof unitShort] ?? service.billingUnit}`}
+                </span>
+                <small className={service.isActive && service.available ? undefined : "status-off"}>
+                  {service.isActive && service.available
+                    ? "Aparece no orçamento"
+                    : "Escondido do site"}
+                </small>
+                <button type="button" className="action" onClick={() => setEdit(service)}>
+                  Editar
+                </button>
+              </article>
+            ))}
           </div>
-        ))}
+        )}
+        {rows?.length === 0 && (
+          <p className="hint space">
+            Nenhum serviço cadastrado ainda. Use um dos exemplos abaixo para começar.
+          </p>
+        )}
         {rows && (
           <details>
             <summary>Serviços já apresentados no site</summary>
@@ -483,6 +549,35 @@ function Catalogue() {
           }}
         />
       )}
+      <ExampleCards
+        title="Exemplos de serviço"
+        hint="Valores só de exemplo. Toque em “Usar este exemplo” para abrir o cadastro já preenchido e ajustar o preço da loja."
+        cards={serviceExamples.map((example) => ({
+          title: example.name,
+          tag: example.category,
+          value: `${moneyBR(Number(example.pricePerM2))} / ${unitShort[example.billingUnit as keyof typeof unitShort]}`,
+          lines: [example.hint, "Aparece no orçamento do site"],
+          action: {
+            label: "Usar este exemplo",
+            run: () => {
+              setEdit({ ...blank, ...example, shortName: example.name });
+              requestAnimationFrame(() =>
+                document.getElementById("editor-servico")?.scrollIntoView({ block: "start" }),
+              );
+            },
+          },
+        }))}
+      />
+      <HowItWorks
+        title="Como cadastrar"
+        steps={[
+          "Crie as categorias (ex.: Forro, Sanca, Parede) no quadro de categorias.",
+          "Toque em “Cadastrar serviço”, dê um nome e escolha a categoria.",
+          "Escolha como cobra: por m², por metro, por unidade ou sob orçamento.",
+          "Coloque o valor. Esse valor aparece na estimativa do site.",
+          "Marque “Exibir no site” e “Disponível para orçamento” e salve.",
+        ]}
+      />
       <section id="categorias-servicos" className="panel space">
         <h2>Categorias de serviço</h2>
         <p className="hint">
@@ -606,7 +701,40 @@ function Agenda() {
         </p>
       )}
       {!rows && !error && <PanelSkeleton label="Carregando agenda…" />}
-      {rows?.length === 0 && <p className="hint">Nenhum agendamento recebido.</p>}
+      {rows?.length === 0 && (
+        <>
+          <p className="hint">Nenhum agendamento recebido ainda.</p>
+          <ExampleCards
+            inline
+            title="Como aparece uma visita"
+            hint="Quando o cliente pede a visita pelo orçamento do site, ela chega aqui assim, com o resumo e as fotos. Você confirma o horário e muda o status."
+            cards={[
+              {
+                title: "Maria Souza",
+                tag: "Solicitado",
+                value: "Sáb, 28/11 · 09:00",
+                lines: [
+                  "Rua das Flores, 120 · Recife",
+                  "Quarto · Forro / teto",
+                  "3 fotos do local",
+                ],
+              },
+              {
+                title: "José Lima",
+                tag: "Confirmado",
+                value: "Seg, 30/11 · 14:00",
+                lines: ["Casa completa · 6 cômodos", "Sanca e moldura", "Sem fotos (vê na visita)"],
+              },
+              {
+                title: "Loja Bela Vista",
+                tag: "Concluído",
+                value: "Ter, 24/11 · 10:30",
+                lines: ["Loja · 2 ambientes", "Forro e luz embutida", "Proposta enviada depois"],
+              },
+            ]}
+          />
+        </>
+      )}
       {rows?.map((item) => (
         <details key={item.id}>
           <summary>
@@ -696,9 +824,40 @@ function Projects() {
       )}
       {!rows && !error && <PanelSkeleton label="Carregando serviços…" />}
       {rows?.length === 0 && (
-        <p className="hint">
-          Nenhum serviço em andamento. Abra uma obra a partir de um orçamento aprovado.
-        </p>
+        <>
+          <p className="hint">
+            Nenhum serviço em andamento. Abra uma obra a partir de um orçamento aprovado.
+          </p>
+          <ExampleCards
+            inline
+            title="Como aparece uma obra"
+            hint="Cada serviço aprovado vira um cartão assim. Você atualiza o andamento em % e as datas, e o cliente acompanha pela área dele."
+            cards={[
+              {
+                title: "Forro do quarto · Maria",
+                tag: "Em andamento",
+                value: "60%",
+                lines: [
+                  "Início 25/11 · Fim 27/11",
+                  "Equipe: João e Ramom",
+                  "Falta acabamento e pintura",
+                ],
+              },
+              {
+                title: "Casa completa · José",
+                tag: "Planejado",
+                value: "0%",
+                lines: ["Começa 02/12", "Material já separado", "Previsão de 8 dias"],
+              },
+              {
+                title: "Loja Bela Vista",
+                tag: "Concluído",
+                value: "100%",
+                lines: ["Entregue em 20/11", "Cliente aprovou", "Pagamento recebido"],
+              },
+            ]}
+          />
+        </>
       )}
       {rows?.map((item) => (
         <details key={item.id}>
@@ -759,3 +918,4 @@ function Projects() {
   );
 }
 import { PanelSkeleton } from "@/components/preciso/LoadingSkeleton";
+import { ExampleCards, HowItWorks } from "@/components/preciso/ExampleCards";

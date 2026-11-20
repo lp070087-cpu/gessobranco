@@ -243,6 +243,64 @@ test("real HTTP handlers enforce sessions, admin roles, input validation and ori
     const receipt = await request(`admin/owner-expenses/${savedExpense.id}/receipt`, token);
     assert.equal(receipt.headers.get("content-type"), "image/png");
     assert.equal((await request(`admin/owner-expenses/${savedExpense.id}/receipt`)).status, 401);
+    // Nova categoria, carro da empresa e gasto ligado ao carro.
+    assert.equal(
+      (await request("admin/expense-categories", token, { name: "manutenção do carro" })).status,
+      201,
+    );
+    assert.equal(
+      (await request("admin/expense-categories", token, { name: "Manutenção do carro" })).status,
+      409,
+    );
+    assert.equal(
+      (await request("admin/vehicles", token, { plate: "XYZ", model: "Strada", year: 2020 }))
+        .status,
+      400,
+    );
+    const carResponse = await request("admin/vehicles", token, {
+      plate: "abc1d23",
+      model: "Fiat Strada",
+      year: 2020,
+    });
+    assert.equal(carResponse.status, 201);
+    const car = await carResponse.json();
+    assert.equal(car.plate, "ABC1D23");
+    const setup = await (await request("admin/expense-setup", token)).json();
+    assert.ok(setup.categories.includes("Manutenção do carro"));
+    assert.equal(setup.vehicles.length, 1);
+    assert.equal(
+      (
+        await request("admin/owner-expenses", token, {
+          request_id: randomUUID(),
+          description: "Troca de óleo",
+          amount: 150,
+          day: "2098-11-19",
+          category: "Manutenção do carro",
+          vehicle_id: car.id,
+          paid: false,
+        })
+      ).status,
+      201,
+    );
+    assert.equal(
+      (
+        await request("admin/owner-expenses", token, {
+          request_id: randomUUID(),
+          description: "Categoria inventada",
+          amount: 10,
+          day: "2098-11-19",
+          category: "Não existe",
+          paid: false,
+        })
+      ).status,
+      400,
+    );
+    const summary = await (
+      await request("admin/owner-expenses/summary?start=2098-11-01&end=2098-11-30", token)
+    ).json();
+    const carCost = summary.find((row) => row.vehicle_id === car.id);
+    assert.equal(Number(carCost.total), 150);
+    assert.equal((await request("admin/vehicles/remove", token, { id: car.id })).status, 200);
     const cfoOverview = await request("cfo/overview?start=2026-11-18&end=2026-11-18", token);
     assert.equal(cfoOverview.status, 200);
     assert.equal((await cfoOverview.json()).dre.receivedServices, 0);

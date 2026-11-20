@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { and, eq, gt, sql } from "drizzle-orm";
 import { z } from "zod";
 import { database } from "./db";
@@ -103,6 +103,37 @@ async function businessProfile(db: ReturnType<typeof database>) {
   return {
     ...defaultBusinessSettings,
     ...(result.rows[0]?.value as Partial<typeof defaultBusinessSettings> | undefined),
+  };
+}
+
+const OWNER_EXPENSE_LABELS = ["Combustível", "Materiais", "Frete", "Serviços", "Outras despesas"];
+type Vehicle = { id: string; plate: string; model: string; year: number };
+async function saveSetting(
+  db: ReturnType<typeof database>,
+  key: string,
+  value: unknown,
+  userId: string,
+) {
+  await db.execute(sql`INSERT INTO preciso.platform_settings(key,value,updated_by)
+    VALUES (${key},${JSON.stringify(value)}::jsonb,${userId}::uuid)
+    ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value,updated_by=EXCLUDED.updated_by,updated_at=now()`);
+}
+/** Categorias de gasto (padrão + criadas pelo dono), carros da empresa e serviços abertos. */
+async function expenseSetup(db: ReturnType<typeof database>) {
+  const result = await db.execute(sql`SELECT
+    (SELECT value FROM preciso.platform_settings WHERE key='owner_expense_categories') AS categories,
+    (SELECT value FROM preciso.platform_settings WHERE key='company_vehicles') AS vehicles,
+    (SELECT COALESCE(jsonb_agg(jsonb_build_object('id',id,'title',title,'status',status) ORDER BY created_at DESC),'[]'::jsonb)
+      FROM preciso.projects WHERE status<>'cancelled') AS projects`);
+  const row = result.rows[0] as {
+    categories: string[] | null;
+    vehicles: Vehicle[] | null;
+    projects: { id: string; title: string; status: string }[];
+  };
+  return {
+    categories: [...OWNER_EXPENSE_LABELS, ...(row.categories ?? [])],
+    vehicles: row.vehicles ?? [],
+    projects: row.projects ?? [],
   };
 }
 
@@ -452,6 +483,89 @@ export async function handleNeonRequest(request: Request, now = new Date()): Pro
       return json({ ok: true });
     }
     if (
+      path === "admin/expense-setup" ||
+      path === "admin/expense-categories" ||
+      path === "admin/vehicles" ||
+      path === "admin/vehicles/remove" ||
+      path === "admin/owner-expenses/summary"
+    ) {
+      if (user.role !== "admin") return json({ error: "Acesso restrito." }, 403);
+      if (path === "admin/expense-setup" && request.method === "GET")
+        return json(await expenseSetup(db));
+      if (path === "admin/expense-categories" && request.method === "POST") {
+        const input = z
+          .object({ name: z.string().trim().min(2).max(60) })
+          .strict()
+          .parse(await body(request));
+        const setup = await expenseSetup(db);
+        const name = input.name.charAt(0).toUpperCase() + input.name.slice(1);
+        if (setup.categories.some((item) => item.toLowerCase() === name.toLowerCase()))
+          return json({ error: "Essa categoria já existe." }, 409);
+        const custom = [
+          ...setup.categories.filter((item) => !OWNER_EXPENSE_LABELS.includes(item)),
+          name,
+        ];
+        await saveSetting(db, "owner_expense_categories", custom, user.id);
+        return json({ name }, 201);
+      }
+      if (path === "admin/vehicles" && request.method === "POST") {
+        const input = z
+          .object({
+            plate: z
+              .string()
+              .trim()
+              .toUpperCase()
+              .regex(
+                /^[A-Z]{3}-?[0-9][A-Z0-9][0-9]{2}$/,
+                "Placa inválida. Ex.: ABC1D23 ou ABC-1234.",
+              ),
+            model: z.string().trim().min(2).max(80),
+            year: z
+              .number()
+              .int()
+              .min(1950)
+              .max(new Date().getFullYear() + 1),
+          })
+          .strict()
+          .parse(await body(request));
+        const setup = await expenseSetup(db);
+        const plate = input.plate.replace("-", "");
+        if (setup.vehicles.some((item) => item.plate === plate))
+          return json({ error: "Esse carro já está cadastrado." }, 409);
+        const vehicle = { id: randomUUID(), plate, model: input.model, year: input.year };
+        await saveSetting(db, "company_vehicles", [...setup.vehicles, vehicle], user.id);
+        return json(vehicle, 201);
+      }
+      if (path === "admin/vehicles/remove" && request.method === "POST") {
+        const input = z
+          .object({ id: z.string().uuid() })
+          .strict()
+          .parse(await body(request));
+        const setup = await expenseSetup(db);
+        await saveSetting(
+          db,
+          "company_vehicles",
+          setup.vehicles.filter((item) => item.id !== input.id),
+          user.id,
+        );
+        return json({ ok: true });
+      }
+      if (path === "admin/owner-expenses/summary" && request.method === "GET") {
+        const query = new URL(request.url).searchParams;
+        const range = z
+          .object({ start: z.string().date(), end: z.string().date() })
+          .parse({ start: query.get("start"), end: query.get("end") });
+        const result = await db.execute(sql`SELECT s.value->>'category' AS category,
+          s.value->>'vehicle_id' AS vehicle_id, s.value->>'project_id' AS project_id,
+          sum(e.amount)::numeric(14,2)::text AS total, count(*)::int AS count
+          FROM preciso.commercial_expenses e JOIN preciso.platform_settings s ON s.key='owner_expense:'||e.id::text
+          WHERE e.due_on BETWEEN ${range.start}::date AND ${range.end}::date
+          GROUP BY 1,2,3`);
+        return json(result.rows);
+      }
+      return json({ error: "Operação indisponível." }, 405);
+    }
+    if (
       path === "admin/owner-expenses" ||
       /^admin\/owner-expenses\/[0-9a-f-]{36}\/receipt$/.test(path)
     ) {
@@ -476,7 +590,9 @@ export async function handleNeonRequest(request: Request, now = new Date()): Pro
       if (path === "admin/owner-expenses" && request.method === "GET") {
         const result =
           await db.execute(sql`SELECT e.id,e.description,e.amount,e.due_on::text,e.paid_on::text,
-          s.value->>'category' AS category, (s.value->>'photo' IS NOT NULL) AS receipt
+          s.value->>'category' AS category, (s.value->>'photo' IS NOT NULL) AS receipt,
+          s.value->>'vehicle_id' AS vehicle_id, s.value->>'project_id' AS project_id,
+          s.value->>'service_note' AS service_note
           FROM preciso.commercial_expenses e JOIN preciso.platform_settings s ON s.key='owner_expense:'||e.id::text
           ORDER BY e.due_on DESC,e.id DESC LIMIT 100`);
         return json(result.rows);
@@ -488,7 +604,10 @@ export async function handleNeonRequest(request: Request, now = new Date()): Pro
             description: z.string().trim().min(3).max(180),
             amount: z.number().finite().positive().max(100000000).multipleOf(0.01),
             day: z.string().date(),
-            category: z.enum(["Combustível", "Materiais", "Frete", "Serviços", "Outras despesas"]),
+            category: z.string().trim().min(2).max(60),
+            vehicle_id: z.string().uuid().optional(),
+            project_id: z.string().uuid().optional(),
+            service_note: z.string().trim().max(120).optional(),
             paid: z.boolean(),
             photo: z
               .string()
@@ -500,6 +619,13 @@ export async function handleNeonRequest(request: Request, now = new Date()): Pro
           .parse(await body(request, 1_700_000));
         if (input.photo && !decodeServiceImage(input.photo))
           return json({ error: "Selecione um comprovante JPG ou PNG válido." }, 400);
+        const setup = await expenseSetup(db);
+        if (!setup.categories.includes(input.category))
+          return json({ error: "Escolha uma categoria cadastrada." }, 400);
+        if (input.vehicle_id && !setup.vehicles.some((item) => item.id === input.vehicle_id))
+          return json({ error: "Carro não encontrado." }, 400);
+        if (input.project_id && !setup.projects.some((item) => item.id === input.project_id))
+          return json({ error: "Serviço não encontrado." }, 400);
         const key = "owner_expense_claim:" + (input.photo ? sha256(input.photo) : input.request_id);
         const payload = {
           request_key: input.request_id,
@@ -519,7 +645,7 @@ export async function handleNeonRequest(request: Request, now = new Date()): Pro
             SELECT preciso.commercial_command(${user.id}::uuid,'expense',${JSON.stringify(payload)}::jsonb)->>'id' AS id FROM claimed
           ), attached AS (
             INSERT INTO preciso.platform_settings(key,value,updated_by)
-            SELECT 'owner_expense:'||id,${JSON.stringify({ category: input.category, photo: input.photo ?? null, request_id: input.request_id })}::jsonb,${user.id}::uuid
+            SELECT 'owner_expense:'||id,${JSON.stringify({ category: input.category, photo: input.photo ?? null, request_id: input.request_id, vehicle_id: input.vehicle_id ?? null, project_id: input.project_id ?? null, service_note: input.service_note || null })}::jsonb,${user.id}::uuid
             FROM created RETURNING key
           ) SELECT id FROM created`);
           if (result.rows[0]) return json(result.rows[0], 201);

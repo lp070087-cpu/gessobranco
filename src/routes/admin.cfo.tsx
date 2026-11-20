@@ -86,6 +86,12 @@ const stamp = (stamp: string) =>
   new Date(stamp).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
 const statuses = { running: "Em processamento", succeeded: "Concluído", failed: "Falhou" };
 
+// Indicadores guardados entre as telas, para o CFO não mostrar carregamento a cada clique.
+const cfoCache: {
+  live: { start: string; end: string; snapshot: Snapshot } | null;
+  history: History | null;
+} = { live: null, history: null };
+
 function Cfo({ user }: { user: CompanyActor }) {
   const requested = Route.useSearch().secao;
   const navigate = useNavigate();
@@ -101,9 +107,11 @@ function Cfo({ user }: { user: CompanyActor }) {
     const end = localDay();
     return { start: end.slice(0, 7) + "-01", end };
   });
-  const [live, setLive] = useState<{ start: string; end: string; snapshot: Snapshot } | null>(null);
+  const [live, setLive] = useState<{ start: string; end: string; snapshot: Snapshot } | null>(
+    cfoCache.live,
+  );
   const [liveError, setLiveError] = useState("");
-  const [history, setHistory] = useState<History | null>(null);
+  const [history, setHistory] = useState<History | null>(cfoCache.history);
   const [selected, setSelected] = useState<Run | null>(null);
   const [revision, setRevision] = useState(0);
   const [error, setError] = useState("");
@@ -129,7 +137,9 @@ function Cfo({ user }: { user: CompanyActor }) {
     setLiveError("");
     void commercialFetch<Snapshot>("cfo/overview?" + query, undefined, controller.signal)
       .then((snapshot) => {
-        if (!controller.signal.aborted) setLive({ start, end, snapshot });
+        if (controller.signal.aborted) return;
+        cfoCache.live = { start, end, snapshot };
+        setLive(cfoCache.live);
       })
       .catch((failure: Error) => {
         if (!controller.signal.aborted) setLiveError(failure.message);
@@ -140,7 +150,9 @@ function Cfo({ user }: { user: CompanyActor }) {
     const controller = new AbortController();
     void commercialFetch<History>("cfo/history", undefined, controller.signal)
       .then((data) => {
-        if (!controller.signal.aborted) setHistory(data);
+        if (controller.signal.aborted) return;
+        cfoCache.history = data;
+        setHistory(data);
       })
       .catch((failure: Error) => {
         if (!controller.signal.aborted) setError(failure.message);
@@ -332,6 +344,7 @@ function Cfo({ user }: { user: CompanyActor }) {
           snapshot={snapshot}
           onRange={setRange}
           currentError={liveError}
+          isAdmin={user.role === "admin"}
         />
       )}
       {section === "Despesas" && user.role === "admin" && <OwnerExpenses saved={refresh} />}
@@ -397,19 +410,54 @@ const comparisonMetrics = (snapshot: Snapshot) =>
     ["Resultado comercial estimado", snapshot.dre.result],
   ] as const;
 
+type ExpenseSummary = {
+  category: string;
+  vehicle_id: string | null;
+  project_id: string | null;
+  total: string;
+  count: number;
+}[];
+const lowerIsBetter = new Set(["Saídas de caixa"]);
+function change(amount: number | null, baseline: number | null) {
+  if (amount == null || baseline == null) return null;
+  const diff = amount - baseline;
+  const percent = baseline !== 0 ? (100 * diff) / Math.abs(baseline) : null;
+  return { diff, percent };
+}
+function changeText(result: ReturnType<typeof change>) {
+  if (!result) return "Em apuração";
+  if (result.diff === 0) return "Igual ao anterior";
+  const sign = result.diff > 0 ? "+" : "−";
+  const percent =
+    result.percent == null
+      ? ""
+      : ` (${sign}${Math.abs(result.percent).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%)`;
+  return `${sign}${moneyBR(Math.abs(result.diff))}${percent}`;
+}
+const brDate = (day: string) => day.split("-").reverse().join("/");
+
 function CfoComparison({
   range,
   snapshot,
   onRange,
   currentError,
+  isAdmin,
 }: {
   range: { start: string; end: string };
   snapshot: Snapshot | null;
   onRange: (value: { start: string; end: string }) => void;
   currentError: string;
+  isAdmin: boolean;
 }) {
   const [previous, setPrevious] = useState<{ key: string; snapshot: Snapshot } | null>(null);
   const [error, setError] = useState("");
+  const [spend, setSpend] = useState<{
+    key: string;
+    now: ExpenseSummary;
+    before: ExpenseSummary;
+  } | null>(null);
+  const [spendRevision, setSpendRevision] = useState(0);
+  const { setup, refresh: refreshSetup } = useExpenseSetup();
   const duration = Date.parse(range.end) - Date.parse(range.start);
   const valid = duration >= 0 && duration <= 366 * 86400000;
   const start = valid
@@ -417,6 +465,7 @@ function CfoComparison({
     : "";
   const end = valid ? new Date(Date.parse(range.start) - 86400000).toISOString().slice(0, 10) : "";
   const key = start + end;
+  const spendKey = range.start + range.end + key;
   useEffect(() => {
     if (!start || !end) return;
     const controller = new AbortController();
@@ -434,82 +483,199 @@ function CfoComparison({
       });
     return () => controller.abort();
   }, [start, end, key]);
+  useEffect(() => {
+    if (!isAdmin || !start || !end) return;
+    const controller = new AbortController();
+    void Promise.all([
+      commercialFetch<ExpenseSummary>(
+        `admin/owner-expenses/summary?start=${range.start}&end=${range.end}`,
+        undefined,
+        controller.signal,
+      ),
+      commercialFetch<ExpenseSummary>(
+        `admin/owner-expenses/summary?start=${start}&end=${end}`,
+        undefined,
+        controller.signal,
+      ),
+    ])
+      .then(([now, before]) => {
+        if (!controller.signal.aborted) setSpend({ key: spendKey, now, before });
+      })
+      .catch(() => {});
+    return () => controller.abort();
+  }, [isAdmin, range.start, range.end, start, end, spendKey, spendRevision]);
   const earlier = previous?.key === key ? previous.snapshot : null;
+  const spending = spend?.key === spendKey ? spend : null;
+  const sumBy = (rows: ExpenseSummary, pick: (row: ExpenseSummary[number]) => string | null) => {
+    const totals = new Map<string, number>();
+    for (const row of rows) {
+      const name = pick(row);
+      if (name) totals.set(name, (totals.get(name) ?? 0) + Number(row.total));
+    }
+    return totals;
+  };
+  const categoryNow = spending ? sumBy(spending.now, (row) => row.category) : new Map();
+  const categoryBefore = spending ? sumBy(spending.before, (row) => row.category) : new Map();
+  const categoryNames = [
+    ...new Set([...(setup?.categories ?? []), ...categoryNow.keys(), ...categoryBefore.keys()]),
+  ].filter((name) => categoryNow.has(name) || categoryBefore.has(name));
+  const vehicleNow = spending ? sumBy(spending.now, (row) => row.vehicle_id) : new Map();
+  const vehicleBefore = spending ? sumBy(spending.before, (row) => row.vehicle_id) : new Map();
   return (
-    <section className="panel">
-      <h2>Comparar períodos</h2>
-      <div className="fields">
-        <label>
-          De{" "}
-          <input
-            type="date"
-            value={range.start}
-            onChange={(event) => onRange({ ...range, start: event.target.value })}
-          />
-        </label>
-        <label>
-          Até{" "}
-          <input
-            type="date"
-            value={range.end}
-            onChange={(event) => onRange({ ...range, end: event.target.value })}
-          />
-        </label>
-      </div>
-      {valid ? (
-        <p className="hint">
-          Comparação com o período imediatamente anterior, com o mesmo número de dias ({start} a{" "}
-          {end}).
-        </p>
-      ) : (
-        <p className="hint">Escolha um intervalo de até um ano.</p>
-      )}
-      {(error || currentError) && (
-        <p className="notice error" role="alert">
-          {error || currentError}
-        </p>
-      )}
-      {valid && !error && !currentError && !(snapshot && earlier) && (
-        <PanelSkeleton label="Carregando comparação…" />
-      )}
-      {snapshot && earlier && (
-        <div className="table-scroll">
-          <table>
-            <thead>
-              <tr>
-                <th>Indicador</th>
-                <th>Atual</th>
-                <th>Anterior</th>
-                <th>Variação</th>
-              </tr>
-            </thead>
-            <tbody>
-              {comparisonMetrics(snapshot).map(([label, amount], index) => {
-                const baseline = comparisonMetrics(earlier)[index][1];
+    <>
+      <section className="panel">
+        <h2>Comparar períodos</h2>
+        <div className="fields">
+          <label>
+            De{" "}
+            <input
+              type="date"
+              value={range.start}
+              onChange={(event) => onRange({ ...range, start: event.target.value })}
+            />
+          </label>
+          <label>
+            Até{" "}
+            <input
+              type="date"
+              value={range.end}
+              onChange={(event) => onRange({ ...range, end: event.target.value })}
+            />
+          </label>
+        </div>
+        {valid ? (
+          <p className="hint">
+            Comparando com o período anterior do mesmo tamanho: {brDate(start)} a {brDate(end)}.
+          </p>
+        ) : (
+          <p className="hint">Escolha um intervalo de até um ano.</p>
+        )}
+        {(error || currentError) && (
+          <p className="notice error" role="alert">
+            {error || currentError}
+          </p>
+        )}
+        {valid && !error && !currentError && !(snapshot && earlier) && (
+          <PanelSkeleton label="Carregando comparação…" />
+        )}
+        {snapshot && earlier && (
+          <div className="compare-cards">
+            {comparisonMetrics(snapshot).map(([label, amount], index) => {
+              const baseline = comparisonMetrics(earlier)[index][1];
+              const result = change(amount, baseline);
+              const better =
+                result && result.diff !== 0
+                  ? lowerIsBetter.has(label)
+                    ? result.diff < 0
+                    : result.diff > 0
+                  : null;
+              return (
+                <div key={label} className="compare-card">
+                  <span>{label}</span>
+                  <b>{moneyBR(amount)}</b>
+                  <small>Antes: {moneyBR(baseline)}</small>
+                  <small className={better == null ? undefined : better ? "good-up" : "bad-down"}>
+                    {changeText(result)}
+                  </small>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </section>
+      {isAdmin && (
+        <section className="panel space">
+          <div className="panel-title-row">
+            <h2>Gastos por categoria</h2>
+            <CategoryAdder
+              added={() => {
+                refreshSetup();
+                setSpendRevision((value) => value + 1);
+              }}
+            />
+          </div>
+          <p className="hint">
+            Soma das despesas lançadas em “Despesas e Pix”, separadas pela categoria. Vermelho é
+            gasto que subiu; verde é gasto que caiu.
+          </p>
+          {!spending && <PanelSkeleton label="Carregando gastos…" />}
+          {spending && categoryNames.length === 0 && (
+            <p className="hint space">
+              Nenhum gasto lançado nesses dois períodos. Lance em CFO → Despesas e Pix.
+            </p>
+          )}
+          {categoryNames.length > 0 && (
+            <div className="compare-cards">
+              {categoryNames.map((name) => {
+                const now = categoryNow.get(name) ?? 0;
+                const before = categoryBefore.get(name) ?? 0;
+                const result = change(now, before);
                 return (
-                  <tr key={label}>
-                    <th scope="row">{label}</th>
-                    <td>{moneyBR(amount)}</td>
-                    <td>{moneyBR(baseline)}</td>
-                    <td>
-                      {amount == null || baseline == null
-                        ? "Em apuração"
-                        : moneyBR(amount - baseline)}
-                    </td>
-                  </tr>
+                  <div key={name} className="compare-card">
+                    <span>{name}</span>
+                    <b>{moneyBR(now)}</b>
+                    <small>Antes: {moneyBR(before)}</small>
+                    <small
+                      className={
+                        !result || result.diff === 0 ? undefined : result.diff > 0 ? "up" : "down"
+                      }
+                    >
+                      {changeText(result)}
+                    </small>
+                  </div>
                 );
               })}
-            </tbody>
-          </table>
-        </div>
+            </div>
+          )}
+          {(setup?.vehicles.length ?? 0) > 0 && spending && (
+            <>
+              <h3 className="space">Por carro da empresa</h3>
+              <div className="compare-cards">
+                {setup!.vehicles.map((vehicle) => {
+                  const now = vehicleNow.get(vehicle.id) ?? 0;
+                  const before = vehicleBefore.get(vehicle.id) ?? 0;
+                  const result = change(now, before);
+                  return (
+                    <div key={vehicle.id} className="compare-card">
+                      <span>{vehicleLabel(vehicle)}</span>
+                      <b>{moneyBR(now)}</b>
+                      <small>Antes: {moneyBR(before)}</small>
+                      <small
+                        className={
+                          !result || result.diff === 0 ? undefined : result.diff > 0 ? "up" : "down"
+                        }
+                      >
+                        {changeText(result)}
+                      </small>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </section>
       )}
-    </section>
+      <HowItWorks
+        title="Como funciona a comparação"
+        steps={[
+          "Escolha o período em “De” e “Até” (ex.: 01/11 a 20/11).",
+          "O sistema pega sozinho o período anterior com a mesma quantidade de dias (ex.: 12/10 a 31/10).",
+          "Cada cartão mostra o valor de agora, o de antes e quanto mudou em reais e em %.",
+          "Verde é bom (vendeu mais ou gastou menos). Vermelho pede atenção.",
+          "Para separar gastos, lance a despesa com a categoria certa, o carro e o serviço. Use “Nova categoria” se faltar alguma.",
+        ]}
+      />
+    </>
   );
 }
 
 function AnimatedMoney({ value }: { value: number | null }) {
   const [display, setDisplay] = useState(value);
+  const shown = useRef(value);
   useEffect(() => {
+    const from = shown.current;
+    shown.current = value;
+    if (from === value) return;
     if (
       value == null ||
       value === 0 ||
@@ -522,7 +688,8 @@ function AnimatedMoney({ value }: { value: number | null }) {
     let frame: number;
     const tick = (time: number) => {
       const progress = Math.min((time - start) / 480, 1);
-      setDisplay(value * (1 - (1 - progress) ** 3));
+      const base = from ?? 0;
+      setDisplay(base + (value - base) * (1 - (1 - progress) ** 3));
       if (progress < 1) frame = requestAnimationFrame(tick);
     };
     frame = requestAnimationFrame(tick);
@@ -1058,7 +1225,7 @@ function CfoResults({
         </button>
       </div>
       <div className="table-scroll">
-        <table>
+        <table className="wrap-table">
           <tbody>
             {rows.map(([section, label, value]) => (
               <tr key={label}>
@@ -1181,3 +1348,5 @@ function ReviewMove({ move, done }: { move: Move; done: () => void }) {
   );
 }
 import { PanelSkeleton } from "@/components/preciso/LoadingSkeleton";
+import { HowItWorks } from "@/components/preciso/ExampleCards";
+import { CategoryAdder, useExpenseSetup, vehicleLabel } from "@/components/preciso/ExpenseSetup";

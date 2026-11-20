@@ -769,3 +769,82 @@
 .totals-band.debt-totals > div {
   flex: 1 1 150px;
 }
+/* Linha de fiado/débito compacta no celular: nome e valor na mesma linha. */
+.debt-main .chips:empty {
+  display: none;
+}
+@media (max-width: 760px) {
+  .debt-main {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "person amount"
+      "date amount"
+      "chips chips"
+      "actions actions";
+    gap: 4px 12px;
+  }
+  .debt-main .debt-person {
+    grid-area: person;
+    font-weight: 600;
+  }
+  .debt-main .debt-person small {
+    font-weight: 400;
+  }
+  .debt-main .debt-date {
+    grid-area: date;
+    grid-column: auto;
+    font-size: 12px;
+  }
+  .debt-main .num {
+    grid-area: amount;
+    align-self: center;
+    font-size: 15px;
+  }
+  .debt-main .chips {
+    grid-area: chips;
+    grid-column: auto;
+  }
+  .debt-main .debt-actions {
+    grid-area: actions;
+    grid-column: auto;
+    margin-top: 4px;
+  }
+  .debt-row {
+    padding: 12px 0;
+  }
+}
+/* Tabela que vira lista no celular */
+@media (max-width: 760px) {
+  .stack-mobile thead {
+    display: none;
+  }
+  .stack-mobile,
+  .stack-mobile tbody,
+  .stack-mobile tr,
+  .stack-mobile td {
+    display: block;
+    width: 100%;
+  }
+  .stack-mobile tr {
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .stack-mobile td {
+    border: 0 !important;
+    padding: 2px 0 !important;
+    text-align: left !important;
+  }
+  .stack-mobile td:first-child {
+    font-weight: 600;
+  }
+  .stack-mobile td[data-label] {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    font-size: 13px;
+  }
+  .stack-mobile td[data-label]::before {
+    content: attr(data-label);
+    color: var(--muted-foreground);
+  }
+}
