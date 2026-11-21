@@ -1546,3 +1546,39 @@
   border-color: #292c27;
   color: #fff;
 }
+.quote-wizard .quote-area-field {
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--background);
+  overflow: hidden;
+}
+.quote-wizard .quote-area-field:focus-within {
+  border-color: var(--accent);
+}
+.editorial-site .public-calculator .quote-area-field input,
+.quote-wizard .quote-area-field input {
+  flex: 1 1 0;
+  width: 0;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  padding: 14px 16px;
+  font-size: 22px;
+  font-variant-numeric: tabular-nums;
+  outline: none;
+  box-shadow: none;
+}
+.quote-wizard .quote-area-field span {
+  padding: 0 16px;
+  font-size: 18px;
+  color: var(--muted-foreground);
+  border-left: 1px solid var(--border);
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+}
+.quote-wizard .quote-area-presets {
+  margin: 12px 0 0;
+}

@@ -26,6 +26,8 @@ type ScopeConfig = {
   works: string[];
   measures: boolean;
   approxArea: boolean;
+  areaQuestion?: string;
+  areaPresets?: number[];
   photos: boolean;
   note: string;
 };
@@ -81,6 +83,8 @@ const SCOPES: Record<Scope, ScopeConfig> = {
     works: WORKS,
     measures: false,
     approxArea: true,
+    areaQuestion: "Quantos metros quadrados tem a casa toda?",
+    areaPresets: [50, 80, 120, 200],
     photos: false,
     note: "Casa completa não precisa de foto nem de medida: na visita o profissional vê tudo no local.",
   },
@@ -101,6 +105,8 @@ const SCOPES: Record<Scope, ScopeConfig> = {
     works: WORKS,
     measures: false,
     approxArea: true,
+    areaQuestion: "Quantos metros quadrados tem o apartamento?",
+    areaPresets: [40, 60, 80, 120],
     photos: false,
     note: "Não precisa de foto nem de medida: na visita o profissional vê tudo no local.",
   },
@@ -129,6 +135,8 @@ const SCOPES: Record<Scope, ScopeConfig> = {
     works: WORKS,
     measures: false,
     approxArea: true,
+    areaQuestion: "Qual a área total do prédio, mais ou menos?",
+    areaPresets: [300, 600, 1000, 2000],
     photos: false,
     note: "Obra grande: o valor sai depois da visita técnica.",
   },
@@ -151,6 +159,8 @@ const SCOPES: Record<Scope, ScopeConfig> = {
     works: WORKS,
     measures: false,
     approxArea: true,
+    areaQuestion: "Quantos metros quadrados tem o espaço?",
+    areaPresets: [30, 60, 100, 200],
     photos: true,
     note: "Se puder, mande fotos do espaço para o profissional já ir preparado.",
   },
@@ -171,6 +181,8 @@ const SCOPES: Record<Scope, ScopeConfig> = {
     works: ["Moldura de fachada", "Marquise ou beiral", "Reparo ou reforma", "Outro"],
     measures: false,
     approxArea: true,
+    areaQuestion: "Qual o tamanho da fachada, mais ou menos?",
+    areaPresets: [20, 40, 80, 150],
     photos: true,
     note: "Mande fotos da fachada: ajuda a planejar andaime e material.",
   },
@@ -315,7 +327,9 @@ export function Calculator() {
     config.measures && area > 0
       ? `Medidas: ${height} × ${width} m (${area.toLocaleString("pt-BR")} m²)`
       : "",
-    config.approxArea && Number(approx) > 0 ? `Tamanho aproximado: ${approx} m²` : "",
+    config.approxArea
+      ? `Tamanho aproximado: ${Number(approx) > 0 ? `${approx} m²` : "não informado"}`
+      : "",
     selected && config.measures ? `Referência: ${selected.name}` : "",
     photos.length ? `Fotos enviadas: ${photos.length}` : "",
   ].filter(Boolean);
@@ -350,6 +364,9 @@ export function Calculator() {
       : []),
     steps.indexOf("lugar") < step ? places.join(", ") : "",
     steps.indexOf("servico") < step ? works.join(", ") : "",
+    steps.includes("tamanho") && steps.indexOf("tamanho") < step && Number(approx) > 0
+      ? `${approx} m²`
+      : "",
     steps.includes("medidas") && steps.indexOf("medidas") < step
       ? `${area.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} m²`
       : "",
@@ -526,20 +543,51 @@ export function Calculator() {
           )}
 
           {current === "tamanho" && (
-            <label className="block">
-              <span className="quote-question">Sabe o tamanho aproximado? (opcional)</span>
-              <input
-                inputMode="decimal"
-                type="number"
-                min="0"
-                step="1"
-                placeholder="Em m². Se não souber, deixe em branco"
-                value={approx}
-                onChange={(e) => setApprox(e.target.value)}
-                className="block w-full bg-background border border-border rounded-xl p-3 text-base mt-2"
-              />
+            <div>
+              <label htmlFor="calc-approx" className="quote-question">
+                {config.areaQuestion ?? "Qual o tamanho, mais ou menos?"}
+              </label>
+              <p className="quote-hint">Opcional. Um número aproximado já ajuda o profissional.</p>
+              <div className="quote-area-field">
+                <input
+                  id="calc-approx"
+                  inputMode="decimal"
+                  type="number"
+                  min="0"
+                  step="1"
+                  placeholder="Ex.: 80"
+                  value={approx}
+                  onChange={(e) => setApprox(e.target.value)}
+                />
+                <span aria-hidden="true">m²</span>
+              </div>
+              {!!config.areaPresets?.length && (
+                <div className="quote-chips quote-area-presets">
+                  <div>
+                    {config.areaPresets.map((value) => (
+                      <button
+                        key={value}
+                        type="button"
+                        aria-pressed={approx === String(value)}
+                        onClick={() => setApprox(String(value))}
+                      >
+                        {value} m²
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setApprox("");
+                        next();
+                      }}
+                    >
+                      Não sei
+                    </button>
+                  </div>
+                </div>
+              )}
               <p className="quote-note mt-4">{config.note}</p>
-            </label>
+            </div>
           )}
 
           {current === "fotos" && (
