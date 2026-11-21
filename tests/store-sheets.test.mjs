@@ -210,7 +210,7 @@ test("folha do dia, retiradas, fechamentos e conferência de entrega", async () 
       amount: 7,
       expense_type: "fixo",
       person: "",
-      due_on: new Date().toISOString().slice(0, 10),
+      due_on: new Intl.DateTimeFormat("en-CA", { timeZone: "America/Recife" }).format(new Date()),
       paid_on: null,
       method: null,
     });
