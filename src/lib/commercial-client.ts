@@ -23,6 +23,7 @@ export type Product = {
   example: boolean;
   balance: string;
   stock_cost: string | null;
+  purchase_reference?: { cost: number; quantity: number } | null;
   units: SaleUnit[];
 };
 export type Customer = {
@@ -130,6 +131,7 @@ export type Movement = {
 };
 export type CommercialState = {
   products: Product[];
+  product_categories?: string[];
   customers: Customer[];
   suppliers: Supplier[];
   rules: PriceRule[];

@@ -812,7 +812,7 @@ export async function handleNeonRequest(request: Request, now = new Date()): Pro
     }
     if (path.startsWith("store/"))
       return await storeRequest(request, path, user, () => body(request));
-    if (path.startsWith("commercial/"))
+    if (path.startsWith("commercial/") && path !== "commercial/product-categories")
       return await commercialRequest(request, path, user, () => body(request));
     if (path === "admin/services" && request.method === "GET") {
       if (!hasCompanyPermission(user, "service_catalogue"))
@@ -822,29 +822,41 @@ export async function handleNeonRequest(request: Request, now = new Date()): Pro
       );
       return json(result.rows);
     }
-    if (path === "admin/service-categories") {
-      if (!hasCompanyPermission(user, "service_catalogue"))
+    if (path === "admin/service-categories" || path === "commercial/product-categories") {
+      const productCategories = path === "commercial/product-categories";
+      if (
+        productCategories ? user.role !== "admin" : !hasCompanyPermission(user, "service_catalogue")
+      )
         return json({ error: "Acesso restrito." }, 403);
-      if (request.method === "GET") {
+      if (!productCategories && request.method === "GET") {
         const result =
           await db.execute(sql`SELECT value->>'name' AS name FROM preciso.platform_settings
           WHERE key LIKE 'service_category:%' UNION SELECT category FROM preciso.services WHERE category<>'' ORDER BY name`);
         return json(result.rows.map(({ name }) => name));
       }
       if (request.method === "POST") {
-        const { name } = z
-          .object({ name: z.string().trim().min(2).max(100) })
+        const input = z
+          .object({
+            name: z.string().trim().min(2).max(100),
+            ...(productCategories ? { request_key: z.string().uuid() } : {}),
+          })
           .strict()
-          .parse(await body(request));
+          .safeParse(await body(request));
+        if (!input.success)
+          return json({ error: "Informe um nome de categoria com 2 a 100 caracteres." }, 400);
+        const name = input.data.name.replace(/\s+/g, " ");
         const normalized = name
           .normalize("NFD")
           .replace(/[\u0300-\u036f]/g, "")
           .toLowerCase()
           .replace(/\s+/g, " ");
+        const categoryKey =
+          (productCategories ? "product_category:" : "service_category:") + sha256(normalized);
         const result =
           await db.execute(sql`INSERT INTO preciso.platform_settings(key,value,updated_by)
-          VALUES (${"service_category:" + sha256(normalized)},jsonb_build_object('name',${name}::text),${user.id}::uuid)
-          ON CONFLICT (key) DO UPDATE SET key=EXCLUDED.key RETURNING value->>'name' AS name`);
+          VALUES (${categoryKey},jsonb_build_object('name',${name}::text),${user.id}::uuid)
+          ON CONFLICT (key) DO UPDATE SET key=EXCLUDED.key
+          RETURNING key AS id,value->>'name' AS name`);
         return json(result.rows[0], 201);
       }
     }

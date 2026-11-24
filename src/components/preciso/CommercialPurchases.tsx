@@ -6,13 +6,7 @@ import {
   type CommercialState,
   type Purchase,
 } from "@/lib/commercial-client";
-import {
-  CommandForm,
-  paymentOptions,
-  productForUnit,
-  productUnits,
-  type Command,
-} from "./CommercialForms";
+import { CommandForm, paymentOptions, type Command } from "./CommercialForms";
 
 export function groupPurchases(purchases: Purchase[]) {
   const groups = new Map<string, Purchase[]>();
@@ -25,7 +19,39 @@ export function groupPurchases(purchases: Purchase[]) {
   return [...groups.values()];
 }
 
-const emptyItem = (id: number) => ({ id, unit: "", quantity: "", total: "" });
+const emptyItem = (id: number) => ({ id, productId: "", unit: "", quantity: "", total: "" });
+const kilogram = /^(kg|quilo(s)?|quilograma(s)?)$/i;
+const tonne = /^(t|ton|tonelada(s)?)$/i;
+const piece = /^(un|und|unid|unidade(s)?|peça(s)?)\.?$/i;
+const tonnesInKilograms = "tonnes-in-kilograms";
+
+function purchaseUnits(product: CommercialState["products"][number]) {
+  const options = product.units.map((unit) => ({
+    value: unit.id,
+    label: kilogram.test(unit.name.trim())
+      ? "Quilo (kg)"
+      : tonne.test(unit.name.trim())
+        ? "Tonelada (t)"
+        : unit.name,
+    stockUnitId: unit.id,
+    multiplier: 1,
+    factor: Number(unit.factor),
+  }));
+  const kg = kilogram.test(product.base_unit.trim()) && options.find((unit) => unit.factor === 1);
+  if (
+    kg &&
+    !product.units.some((unit) => tonne.test(unit.name.trim()) && Number(unit.factor) === 1000)
+  ) {
+    options.push({
+      value: tonnesInKilograms,
+      label: "Tonelada (t)",
+      stockUnitId: kg.stockUnitId,
+      multiplier: 1000,
+      factor: 1000,
+    });
+  }
+  return options;
+}
 const cents = (value: string | number | null) => Math.round(Number(value) * 100);
 
 export function PurchaseDeliveryForm({
@@ -40,7 +66,8 @@ export function PurchaseDeliveryForm({
   const [extras, setExtras] = useState("");
   const [busy, setBusy] = useState(false);
   const next = useRef(1);
-  const options = productUnits(state);
+  const products = state.products.filter((product) => product.units.length > 0 && !product.example);
+  const [error, setError] = useState("");
   const subtotal = items.reduce((total, row) => total + cents(row.total), 0);
   const update = (id: number, patch: Partial<ReturnType<typeof emptyItem>>) =>
     setItems((rows) => rows.map((row) => (row.id === id ? { ...row, ...patch } : row)));
@@ -50,15 +77,23 @@ export function PurchaseDeliveryForm({
     if (busy) return;
     const form = event.currentTarget;
     const data = new FormData(form);
+    setError("");
     setBusy(true);
     try {
-      await command("purchase_delivery", {
-        items: items.map((row) => ({
-          product_id: productForUnit(state, row.unit),
-          unit_id: row.unit,
-          quantity: Number(row.quantity),
+      const lines = items.map((row) => {
+        const product = products.find((entry) => entry.id === row.productId);
+        const unit = product && purchaseUnits(product).find((option) => option.value === row.unit);
+        if (!product || !unit) throw new Error("Selecione o produto e a unidade de cada material.");
+        const quantity = Number((Number(row.quantity) * unit.multiplier).toFixed(6));
+        return {
+          product_id: product.id,
+          unit_id: unit.stockUnitId,
+          quantity,
           goods_total: Number(row.total),
-        })),
+        };
+      });
+      await command("purchase_delivery", {
+        items: lines,
         freight: Number(freight),
         other_costs: Number(extras),
         supplier_id: data.get("supplier_id") || null,
@@ -71,8 +106,8 @@ export function PurchaseDeliveryForm({
       setFreight("");
       setExtras("");
       form.reset();
-    } catch {
-      // The store's shared command handler displays operation errors and keeps this draft.
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : "Não foi possível registrar a compra.");
     } finally {
       setBusy(false);
     }
@@ -87,12 +122,11 @@ export function PurchaseDeliveryForm({
       </p>
       <fieldset disabled={busy}>
         {items.map((item, index) => {
-          const product = state.products.find((entry) =>
-            entry.units.some((unit) => unit.id === item.unit),
-          );
-          const kg = product?.units.find(
-            (unit) => /^kg$/i.test(unit.name.trim()) && Number(unit.factor) === 1,
-          );
+          const product = products.find((entry) => entry.id === item.productId);
+          const units = product ? purchaseUnits(product) : [];
+          const selected = units.find((unit) => unit.value === item.unit);
+          const whole = !!product && piece.test(product.base_unit.trim());
+          const stockQuantity = Number(item.quantity) * (selected?.factor ?? 0);
           return (
             <div className="ouro-form-group space" key={item.id}>
               <div className="actions">
@@ -107,29 +141,60 @@ export function PurchaseDeliveryForm({
                   </button>
                 )}
               </div>
-              <label>
-                Produto e unidade
-                <select
-                  value={item.unit}
-                  onChange={(event) => update(item.id, { unit: event.target.value })}
-                  required
-                >
-                  <option value="">Selecione um produto</option>
-                  {options.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
               <div className="fields">
                 <label>
-                  Quantidade{" "}
+                  Produto
+                  <select
+                    value={item.productId}
+                    onChange={(event) => {
+                      const productId = event.target.value;
+                      const nextProduct = products.find((entry) => entry.id === productId);
+                      const choices = nextProduct ? purchaseUnits(nextProduct) : [];
+                      const base = choices.find((unit) => unit.factor === 1);
+                      update(item.id, {
+                        productId,
+                        unit: base?.value ?? choices[0]?.value ?? "",
+                        quantity: "",
+                        total: "",
+                      });
+                    }}
+                    required
+                  >
+                    <option value="">Selecione um produto</option>
+                    {products.map((entry) => (
+                      <option key={entry.id} value={entry.id}>
+                        {entry.name}
+                        {entry.category ? " · " + entry.category : ""}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Unidade da compra
+                  <select
+                    value={item.unit}
+                    disabled={!product}
+                    onChange={(event) =>
+                      update(item.id, { unit: event.target.value, quantity: "" })
+                    }
+                    required
+                  >
+                    <option value="">Selecione a unidade</option>
+                    {units.map((unit) => (
+                      <option key={unit.value} value={unit.value}>
+                        {unit.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Quantidade {selected && <small>em {selected.label}</small>}
                   <input
                     type="number"
-                    min="0.000001"
-                    max="10000000"
-                    step="0.000001"
+                    min={whole ? 1 : "0.000001"}
+                    max={selected?.multiplier === 1000 ? 10000 : 10000000}
+                    step={whole ? 1 : "0.000001"}
+                    disabled={!selected}
                     value={item.quantity}
                     onChange={(event) => update(item.id, { quantity: event.target.value })}
                     required
@@ -148,21 +213,10 @@ export function PurchaseDeliveryForm({
                   />
                 </label>
               </div>
-              {kg && /^kg$/i.test(product?.base_unit.trim() ?? "") && (
-                <div className="actions">
-                  {[5, 10, 20].map((tons) => (
-                    <button
-                      key={tons}
-                      type="button"
-                      className="action"
-                      onClick={() =>
-                        update(item.id, { unit: kg.id, quantity: String(tons * 1000) })
-                      }
-                    >
-                      {tons} t em kg
-                    </button>
-                  ))}
-                </div>
+              {product && selected && selected.factor !== 1 && stockQuantity > 0 && (
+                <p className="hint">
+                  Entrada no estoque: {quantityBR(stockQuantity)} {product.base_unit}.
+                </p>
               )}
             </div>
           );
@@ -175,8 +229,10 @@ export function PurchaseDeliveryForm({
         >
           Adicionar material
         </button>
-        {!options.length && (
-          <p className="hint">Cadastre um produto ativo e sua unidade na aba Produtos.</p>
+        {!products.length && (
+          <p className="hint">
+            Cadastre um produto e sua unidade na aba Produtos para registrar uma compra.
+          </p>
         )}
         <div className="fields space">
           <label>
@@ -236,7 +292,12 @@ export function PurchaseDeliveryForm({
           Materiais {moneyBR(subtotal / 100)} ·{" "}
           <strong>Total {moneyBR((subtotal + cents(freight) + cents(extras)) / 100)}</strong>
         </p>
-        <button className="action primary" disabled={!options.length}>
+        {error && (
+          <p className="notice error" role="alert">
+            {error}
+          </p>
+        )}
+        <button className="action primary" disabled={!products.length}>
           {busy ? "Salvando…" : "Registrar compra"}
         </button>
       </fieldset>

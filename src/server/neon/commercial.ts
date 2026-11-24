@@ -42,6 +42,7 @@ const product = z
     active: z.boolean(),
     published: z.boolean(),
     public_price: z.boolean(),
+    purchase_reference: z.object({ cost: money, quantity }).strict().nullable().optional(),
     image_url: z
       .string()
       .url()
@@ -325,10 +326,21 @@ export async function commercialRequest(
     return json(result.rows[0]);
   }
   if (path === "commercial/state" && request.method === "GET") {
-    const result = await db.execute(sql`SELECT jsonb_build_object(
-      'products',(SELECT COALESCE(jsonb_agg(v ORDER BY v.name),'[]') FROM (SELECT p.*,s.balance,s.stock_cost,
+    const result = await db.execute(sql`WITH purchase_references AS (
+      SELECT DISTINCT ON (result->>'id') result->>'id' AS product_id, payload->'purchase_reference' AS value
+      FROM preciso.commercial_operations
+      WHERE kind='product' AND result IS NOT NULL AND payload ? 'purchase_reference'
+      ORDER BY result->>'id',created_at DESC,request_key DESC
+    )
+    SELECT jsonb_build_object(
+      'products',(SELECT COALESCE(jsonb_agg(v ORDER BY v.name),'[]') FROM (SELECT p.*,s.balance,s.stock_cost,r.value AS purchase_reference,
         (SELECT COALESCE(jsonb_agg(u ORDER BY u.name),'[]') FROM preciso.commercial_units u WHERE u.product_id=p.id) AS units
-        FROM preciso.commercial_products p JOIN preciso.commercial_stock s ON s.id=p.id) v),
+        FROM preciso.commercial_products p JOIN preciso.commercial_stock s ON s.id=p.id
+        LEFT JOIN purchase_references r ON r.product_id=p.id::text) v),
+      'product_categories',(SELECT COALESCE(jsonb_agg(name ORDER BY name),'[]') FROM (
+        SELECT value->>'name' AS name FROM preciso.platform_settings WHERE key LIKE 'product_category:%'
+        UNION SELECT category FROM preciso.commercial_products WHERE category<>''
+      ) categories),
       'customers',(SELECT COALESCE(jsonb_agg(c ORDER BY c.name),'[]') FROM preciso.commercial_customers c),
       'suppliers',(SELECT COALESCE(jsonb_agg(s ORDER BY s.name),'[]') FROM preciso.commercial_suppliers s),
       'rules',(SELECT COALESCE(jsonb_agg(r),'[]') FROM preciso.commercial_price_rules r),
@@ -418,7 +430,30 @@ export async function commercialRequest(
   }
   if (request.method !== "POST") return json({ error: "Operação indisponível." }, 405);
   const kind = path.replace(/^commercial\//, "");
-  const input = validateCommercialCommand(kind, await readBody());
+  const body = await readBody();
+  const parsed = kind === "product" ? product.safeParse(body) : null;
+  if (parsed && !parsed.success) {
+    const field = parsed.error.issues[0]?.path[0];
+    const messages: Record<string, string> = {
+      name: "Informe um nome com 2 a 160 caracteres.",
+      base_unit: "Informe a unidade do estoque.",
+      units: "Confira as unidades de venda, as quantidades e os preços informados.",
+      purchase_reference: "Confira o valor e a quantidade da compra de referência.",
+      image_url: "Informe um endereço de imagem que comece com HTTPS.",
+      minimum_stock: "Confira a quantidade do estoque mínimo.",
+      minimum_margin: "A margem mínima deve ficar entre 0% e 100%.",
+      maximum_discount: "O desconto deve ficar entre 0% e 100%.",
+    };
+    return json(
+      {
+        error:
+          messages[String(field)] ??
+          "Confira os dados do produto e os nomes das unidades de venda.",
+      },
+      400,
+    );
+  }
+  const input = parsed?.data ?? validateCommercialCommand(kind, body);
   try {
     const operation =
       kind === "purchase_delivery" || kind === "purchase_delivery_payment"

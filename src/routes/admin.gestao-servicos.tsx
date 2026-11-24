@@ -162,10 +162,12 @@ function OperationForm({
   children,
   submit,
   label,
+  resetOnSuccess = false,
 }: {
   children: ReactNode;
   submit: (data: FormData) => Promise<unknown>;
   label: string;
+  resetOnSuccess?: boolean;
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -173,12 +175,14 @@ function OperationForm({
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (busy) return;
-    const data = new FormData(event.currentTarget);
+    const form = event.currentTarget;
+    const data = new FormData(form);
     setBusy(true);
     setError("");
     setDone(false);
     try {
       await submit(data);
+      if (resetOnSuccess) form.reset();
       setDone(true);
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : "Não foi possível salvar.");
@@ -590,6 +594,7 @@ function Catalogue() {
         )}
         <OperationForm
           label="Cadastrar categoria"
+          resetOnSuccess
           submit={async (form) => {
             const item = await commercialFetch<{ name: string }>("admin/service-categories", {
               name: value(form, "name"),

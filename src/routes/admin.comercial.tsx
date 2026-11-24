@@ -488,11 +488,29 @@ function Commercial() {
                     <ProductEditor
                       key={editing === "new" ? "new" : editing.id}
                       product={editing === "new" ? undefined : editing}
+                      categories={state.product_categories ?? []}
                       command={command}
                       close={() => setEditing(null)}
                     />
                   </div>
                 )}
+                <details>
+                  <summary>Gerenciar categorias de produtos</summary>
+                  <CommandForm
+                    title="Nova categoria de produto"
+                    kind="product-categories"
+                    command={command}
+                    label="Cadastrar categoria"
+                    fields={[
+                      { name: "name", label: "Nome da categoria", required: true, maxLength: 100 },
+                    ]}
+                  />
+                  {!!state.product_categories?.length && (
+                    <p className="hint space">
+                      Categorias cadastradas: {state.product_categories.join(" · ")}
+                    </p>
+                  )}
+                </details>
                 <details>
                   <summary>Preços por cliente, perfil ou quantidade</summary>
                   <CommandForm
@@ -604,6 +622,18 @@ function Commercial() {
             )}
             {tab === "Estoque" && (
               <>
+                <div className="actions">
+                  <button
+                    type="button"
+                    className="action primary"
+                    onClick={() => {
+                      setTab("Produtos");
+                      openEditor("new");
+                    }}
+                  >
+                    Cadastrar produto
+                  </button>
+                </div>
                 <StockBalances products={state.products} />
                 <StockGuide />
                 <p className="notice space">

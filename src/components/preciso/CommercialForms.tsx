@@ -1,5 +1,5 @@
 import { useState, type FormEvent, type ReactNode } from "react";
-import type { CommercialState, Product } from "@/lib/commercial-client";
+import { moneyBR, type CommercialState, type Product } from "@/lib/commercial-client";
 
 export type Command = (kind: string, data: Record<string, unknown>) => Promise<{ id: string }>;
 export type Field = {
@@ -7,6 +7,8 @@ export type Field = {
   label: string;
   type?: "number" | "date" | "checkbox" | "select" | "text";
   options?: { value: string; label: string }[];
+  list?: string;
+  maxLength?: number;
   value?: string | number | boolean;
   required?: boolean;
   nullable?: boolean;
@@ -38,6 +40,8 @@ export function Fields({ fields }: { fields: Field[] }) {
               type={field.type ?? "text"}
               defaultValue={field.type === "checkbox" ? undefined : String(field.value ?? "")}
               defaultChecked={field.type === "checkbox" ? Boolean(field.value) : undefined}
+              list={field.list}
+              maxLength={field.maxLength}
               min={field.type === "number" ? 0 : undefined}
               step={field.type === "number" ? "any" : undefined}
               required={field.required}
@@ -109,32 +113,55 @@ export function CommandForm({
 
 export function ProductEditor({
   product,
+  categories,
   command,
   close,
 }: {
   product?: Product;
+  categories: string[];
   command: Command;
   close: () => void;
 }) {
   const [busy, setBusy] = useState(false);
-  const [units, setUnits] = useState(
-    product?.units.map((unit) => ({
-      name: unit.name,
-      factor: String(unit.factor),
-      price: unit.price ?? "",
-    })) ?? [{ name: "", factor: "1", price: "" }],
+  const [error, setError] = useState("");
+  const [baseUnit, setBaseUnit] = useState(product?.base_unit ?? "");
+  const [cost, setCost] = useState(String(product?.purchase_reference?.cost ?? ""));
+  const [costQuantity, setCostQuantity] = useState(
+    String(product?.purchase_reference?.quantity ?? 1),
   );
+  const baseSaleUnit =
+    product?.units.find((unit) => unit.name === product.base_unit && Number(unit.factor) === 1) ??
+    product?.units.find((unit) => Number(unit.factor) === 1);
+  const [units, setUnits] = useState<
+    { id: string | null; name: string; factor: string; price: string }[]
+  >(
+    product?.units
+      .filter((unit) => unit.id !== baseSaleUnit?.id)
+      .map((unit) => ({
+        id: unit.id,
+        name: unit.name,
+        factor: String(unit.factor),
+        price: unit.price ?? "",
+      })) ?? [],
+  );
+  const stockUnit = baseUnit.trim();
+  const referencePerUnit =
+    cost !== "" && Number(costQuantity) > 0 ? Number(cost) / Number(costQuantity) : null;
   const fields: Field[] = [
-    { name: "name", label: "Nome do produto", required: true, value: product?.name },
-    { name: "category", label: "Categoria", value: product?.category },
-    { name: "description", label: "Descrição", value: product?.description },
     {
-      name: "base_unit",
-      label: "Unidade-base do estoque",
+      name: "name",
+      label: "Nome do produto",
       required: true,
-      value: product?.base_unit,
-      hint: "Ex.: kg, metro ou unidade. Todas as conversões usam esta base.",
+      value: product?.name,
+      maxLength: 160,
     },
+    {
+      name: "category",
+      label: "Categoria do produto",
+      value: product?.category,
+      list: "product-categories",
+    },
+    { name: "description", label: "Descrição", value: product?.description },
     {
       name: "valuation_method",
       label: "Custeio do estoque",
@@ -197,20 +224,46 @@ export function ProductEditor({
   ];
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (busy) return;
+    setError("");
+    const data = new FormData(event.currentTarget);
+    const rawPrice = String(data.get("base_price") ?? "");
+    const saleUnits = [
+      {
+        name: baseSaleUnit?.name ?? stockUnit,
+        factor: 1,
+        price: rawPrice === "" ? null : Number(rawPrice),
+      },
+      ...units.map((unit) => ({
+        name: unit.name.trim(),
+        factor: Number(unit.factor),
+        price: unit.price === "" ? null : Number(unit.price),
+      })),
+    ];
+    if (stockUnit.length === 0 || String(data.get("name") ?? "").trim().length < 2) {
+      setError("Informe o nome do produto e a unidade do estoque.");
+      return;
+    }
+    if (
+      saleUnits.some((unit) => !unit.name) ||
+      new Set(saleUnits.map((unit) => unit.name)).size !== saleUnits.length
+    ) {
+      setError("Preencha os nomes das unidades de venda e use um nome diferente em cada uma.");
+      return;
+    }
     setBusy(true);
     try {
       await command("product", {
         ...readFields(event.currentTarget, fields),
         ...(product ? { id: product.id } : {}),
-        units: units.map((unit) => ({
-          name: unit.name.trim(),
-          factor: Number(unit.factor),
-          price: unit.price === "" ? null : Number(unit.price),
-        })),
+        base_unit: stockUnit,
+        units: saleUnits,
+        purchase_reference:
+          cost === "" ? null : { cost: Number(cost), quantity: Number(costQuantity) },
       });
       close();
-    } catch {
-      /* Shared error status. */
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : "Não foi possível salvar o produto.");
     } finally {
       setBusy(false);
     }
@@ -218,15 +271,82 @@ export function ProductEditor({
   return (
     <form className="panel space" onSubmit={submit}>
       <h2>{product ? "Editar produto" : "Cadastrar produto"}</h2>
+      <Fields fields={fields.slice(0, 3)} />
+      <datalist id="product-categories">
+        {categories.map((category) => (
+          <option key={category} value={category} />
+        ))}
+      </datalist>
+      <div className="fields">
+        <label>
+          Unidade do estoque
+          <input
+            name="base_unit"
+            list="stock-units"
+            required
+            maxLength={40}
+            value={baseUnit}
+            onChange={(event) => setBaseUnit(event.target.value)}
+            placeholder="kg ou unidade"
+          />
+          <datalist id="stock-units">
+            <option value="kg" />
+            <option value="unidade" />
+            <option value="metro" />
+          </datalist>
+          <small>Use kg para gesso em pó e unidade para placas.</small>
+        </label>
+        <label>
+          Preço de venda por {stockUnit || "unidade do estoque"} (R$)
+          <input
+            name="base_price"
+            type="number"
+            min="0"
+            max="1000000000"
+            step="0.01"
+            required={!product}
+            defaultValue={baseSaleUnit?.price ?? ""}
+          />
+        </label>
+        <label>
+          Valor pago na compra (R$)
+          <input
+            type="number"
+            min="0"
+            max="1000000000"
+            step="0.01"
+            value={cost}
+            onChange={(event) => setCost(event.target.value)}
+          />
+          <small>Opcional. Informe quanto paga na quantidade ao lado.</small>
+        </label>
+        <label>
+          Quantidade comprada em {stockUnit || "unidades do estoque"}
+          <input
+            type="number"
+            min="0.000001"
+            max="10000000"
+            step="0.000001"
+            required={cost !== ""}
+            value={costQuantity}
+            onChange={(event) => setCostQuantity(event.target.value)}
+          />
+        </label>
+      </div>
+      {referencePerUnit !== null && Number.isFinite(referencePerUnit) && (
+        <p className="hint">
+          Custo de referência por {stockUnit || "unidade"}:{" "}
+          <strong>{moneyBR(referencePerUnit)}</strong>.
+        </p>
+      )}
       <p className="hint">
-        Comece pelo nome e pela unidade do estoque. Depois informe como vende o produto. Registre o
-        saldo e o custo em Compras ou Estoque.
+        O custo de referência ajuda a definir preços. Registre a entrada e o custo real em Compras
+        para atualizar o estoque.
       </p>
-      <Fields fields={fields} />
-      <h3>Unidades de venda</h3>
+      <h3>Outras formas de venda</h3>
       <p className="hint">
-        Exemplo: se o estoque usa kg e o saco pesa 40 kg, cadastre a unidade de venda “saco” com
-        quantidade 40. Para vender por kg, use quantidade 1.
+        Para vender um saco de 40 kg, adicione “Saco” com quantidade 40 e informe o preço do saco.
+        Todas as unidades usam o mesmo saldo.
       </p>
       {units.map((unit, index) => (
         <div className="line" key={index}>
@@ -234,6 +354,7 @@ export function ProductEditor({
             Unidade
             <input
               required
+              maxLength={40}
               value={unit.name}
               onChange={(e) =>
                 setUnits((list) =>
@@ -248,6 +369,7 @@ export function ProductEditor({
               required
               type="number"
               min="0.000001"
+              max="10000000"
               step="0.000001"
               value={unit.factor}
               onChange={(e) =>
@@ -262,6 +384,7 @@ export function ProductEditor({
             <input
               type="number"
               min="0"
+              max="1000000000"
               step="0.01"
               value={unit.price}
               onChange={(e) =>
@@ -274,13 +397,33 @@ export function ProductEditor({
           <small>
             {unit.price === "" ? "Preço ainda não configurado" : "Preço padrão desta unidade"}
           </small>
+          {!unit.id && (
+            <button
+              type="button"
+              className="action"
+              onClick={() => setUnits((list) => list.filter((_, i) => i !== index))}
+            >
+              Remover unidade
+            </button>
+          )}
         </div>
       ))}
+      <div className="space">
+        <Fields fields={fields.slice(3)} />
+      </div>
+      {error && (
+        <p className="notice error" role="alert">
+          {error}
+        </p>
+      )}
       <div className="actions">
         <button
           type="button"
           className="action"
-          onClick={() => setUnits((list) => [...list, { name: "", factor: "", price: "" }])}
+          disabled={units.length >= 19}
+          onClick={() =>
+            setUnits((list) => [...list, { id: null, name: "", factor: "", price: "" }])
+          }
         >
           Adicionar unidade
         </button>

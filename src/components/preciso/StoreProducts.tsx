@@ -101,6 +101,13 @@ export function ProductCards({
                 </span>
               ))}
             </span>
+            {product.purchase_reference && (
+              <small>
+                Custo de referência:{" "}
+                {moneyBR(product.purchase_reference.cost / product.purchase_reference.quantity)} /{" "}
+                {product.base_unit}
+              </small>
+            )}
             <span className="product-tags">
               <span>{product.published ? "No site" : "Só na loja"}</span>
               {!product.active && <span>Inativo</span>}

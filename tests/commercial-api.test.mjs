@@ -97,6 +97,15 @@ test("real HTTP handlers enforce sessions, admin roles, input validation and ori
     assert.match(login.headers.get("set-cookie"), /HttpOnly; SameSite=Strict/);
     const token = login.headers.get("set-cookie").match(/preciso_session=([a-f0-9]+)/)[1];
     assert.equal((await request("commercial/state", token)).status, 403);
+    assert.equal(
+      (
+        await request("commercial/product-categories", token, {
+          request_key: randomUUID(),
+          name: "Materiais de acabamento",
+        })
+      ).status,
+      403,
+    );
     assert.equal((await request("commercial/quality", token, { good: 15, medium: 5 })).status, 403);
     assert.equal((await request("admin/company-requests", token)).status, 403);
     assert.equal(
@@ -106,6 +115,28 @@ test("real HTTP handlers enforce sessions, admin roles, input validation and ori
     );
     await db.exec("UPDATE preciso.users SET role='admin' WHERE email='client@example.invalid'");
     assert.equal((await request("commercial/state", token)).status, 200);
+    const categoryKey = randomUUID();
+    const category = await request("commercial/product-categories", token, {
+      request_key: categoryKey,
+      name: "Placas e forros",
+    });
+    assert.equal(category.status, 201);
+    assert.equal((await category.json()).name, "Placas e forros");
+    assert.equal(
+      (
+        await request("commercial/product-categories", token, {
+          request_key: categoryKey,
+          name: "PLACAS E FORROS",
+        })
+      ).status,
+      201,
+    );
+    assert.equal(
+      (await request("admin/service-categories", token, { name: "Instalação de forro" })).status,
+      201,
+    );
+    const catalogueState = await (await request("commercial/state", token)).json();
+    assert.deepEqual(catalogueState.product_categories, ["Gesso", "Placas e forros"]);
     assert.equal(
       (await request("commercial/cash_open", token, { request_key: randomUUID(), opening: -1 }))
         .status,
@@ -438,7 +469,8 @@ test("real HTTP handlers enforce sessions, admin roles, input validation and ori
           request_key: randomUUID(),
           name: "Gesso de teste portal",
           description: "",
-          category: "",
+          category: "Placas e forros",
+          purchase_reference: { cost: 50, quantity: 40 },
           base_unit: "kg",
           valuation_method: "fifo",
           minimum_stock: 0,
@@ -449,13 +481,18 @@ test("real HTTP handlers enforce sessions, admin roles, input validation and ori
           published: true,
           public_price: true,
           image_url: null,
-          units: [{ name: "Saco", factor: 40, price: 25 }],
+          units: [
+            { name: "kg", factor: 1, price: 2.5 },
+            { name: "Saco", factor: 40, price: 25 },
+          ],
         })
       ).status,
       200,
     );
     const materials = await (await request("portal/catalogue", staffToken)).json();
-    const sack = materials.find((item) => item.name === "Gesso de teste portal").units[0];
+    const sack = materials
+      .find((item) => item.name === "Gesso de teste portal")
+      .units.find((unit) => unit.name === "Saco");
     const bulk = {
       email: "cnpj@example.invalid",
       password: staffPassword,
@@ -587,7 +624,15 @@ test("real HTTP handlers enforce sessions, admin roles, input validation and ori
       21,
     );
 
-    const productId = materials.find((item) => item.name === "Gesso de teste portal").id;
+    const listing = materials.find((item) => item.name === "Gesso de teste portal");
+    assert.equal(listing.purchase_reference, undefined);
+    const productId = listing.id;
+    const savedProducts = await (await request("commercial/state", token)).json();
+    const savedProduct = savedProducts.products.find((item) => item.id === productId);
+    assert.deepEqual(savedProduct.purchase_reference, { cost: 50, quantity: 40 });
+    assert.equal(savedProduct.category, "Placas e forros");
+    assert.equal(Number(savedProduct.balance), 0);
+    assert.equal(Number(savedProduct.units.find((unit) => unit.name === "kg").price), 2.5);
     const second = await db.query(`WITH new_product AS (
       INSERT INTO preciso.commercial_products(name,base_unit,valuation_method)
       VALUES ('Placa de teste','un','fifo') RETURNING id
