@@ -470,7 +470,9 @@ function SaleDetails({
   command: Command;
 }) {
   const receipt = useRef<HTMLDivElement>(null);
-  useEffect(() => receipt.current?.scrollIntoView({ block: "start" }), []);
+  useEffect(() => {
+    receipt.current?.scrollIntoView({ block: "start" });
+  }, []);
   return (
     <section className="panel space">
       <h2>Venda {sale.id.slice(0, 8)}</h2>
