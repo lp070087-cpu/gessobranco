@@ -463,6 +463,12 @@ export async function handleNeonRequest(request: Request, now = new Date()): Pro
     const user = await actor(request);
     if (!user) return json({ error: "Autenticação necessária." }, 401);
     if (path === "auth/me" && request.method === "GET") return json({ user });
+    if (path === "commercial/reference" && request.method === "GET") {
+      if (user.role !== "admin") return json({ error: "Acesso restrito à administração." }, 403);
+      const result = await db.execute(sql`SELECT value FROM preciso.platform_settings
+        WHERE key='store_reference:prazeres:2026-11'`);
+      return json(result.rows[0]?.value ?? null);
+    }
     if (path === "auth/password" && request.method === "POST") {
       const input = z
         .object({ current: z.string().min(1).max(200), next: credentials.shape.password })

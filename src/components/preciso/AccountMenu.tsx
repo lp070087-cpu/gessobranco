@@ -149,6 +149,13 @@ export const managementGroups: Group[] = [
       { to: "/admin/comercial", secao: "compras", label: "Compras", icon: Truck, allow: admin },
       {
         to: "/admin/comercial",
+        secao: "referencia",
+        label: "Referência de Prazeres",
+        icon: BookOpenCheck,
+        allow: admin,
+      },
+      {
+        to: "/admin/comercial",
         secao: "materiais",
         label: "Pedidos de material",
         icon: ClipboardCheck,

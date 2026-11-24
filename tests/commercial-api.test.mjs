@@ -83,6 +83,7 @@ test("real HTTP handlers enforce sessions, admin roles, input validation and ori
         }),
       );
     assert.equal((await request("commercial/state")).status, 401);
+    assert.equal((await request("commercial/reference")).status, 401);
     const credentials = {
       email: "client@example.invalid",
       password: "Password-test-12345",
@@ -97,6 +98,7 @@ test("real HTTP handlers enforce sessions, admin roles, input validation and ori
     assert.match(login.headers.get("set-cookie"), /HttpOnly; SameSite=Strict/);
     const token = login.headers.get("set-cookie").match(/preciso_session=([a-f0-9]+)/)[1];
     assert.equal((await request("commercial/state", token)).status, 403);
+    assert.equal((await request("commercial/reference", token)).status, 403);
     assert.equal(
       (
         await request("commercial/product-categories", token, {
@@ -115,6 +117,14 @@ test("real HTTP handlers enforce sessions, admin roles, input validation and ori
     );
     await db.exec("UPDATE preciso.users SET role='admin' WHERE email='client@example.invalid'");
     assert.equal((await request("commercial/state", token)).status, 200);
+    const emptyReference = await request("commercial/reference", token);
+    assert.equal(emptyReference.status, 200);
+    assert.equal(await emptyReference.json(), null);
+    await db.exec(`INSERT INTO preciso.platform_settings(key,value)
+      VALUES ('store_reference:prazeres:2026-11','{"title":"Conferência de teste"}')`);
+    const reference = await request("commercial/reference", token);
+    assert.equal(reference.headers.get("cache-control"), "no-store");
+    assert.deepEqual(await reference.json(), { title: "Conferência de teste" });
     const categoryKey = randomUUID();
     const category = await request("commercial/product-categories", token, {
       request_key: categoryKey,

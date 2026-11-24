@@ -35,6 +35,7 @@ import {
   CommercialOverview,
 } from "@/components/preciso/CommercialOverview";
 import { CommercialReportTools } from "@/components/preciso/CommercialInsights";
+import { StoreReference } from "@/components/preciso/StoreReference";
 import "@/components/preciso/commercial.css";
 
 const sections = {
@@ -46,6 +47,7 @@ const sections = {
   materiais: "Pedidos de material",
   financeiro: "Financeiro",
   importar: "Importar",
+  referencia: "Referência de Prazeres",
 } as const;
 type Section = keyof typeof sections;
 export const Route = createFileRoute("/admin/comercial")({
@@ -331,7 +333,9 @@ function Commercial() {
         </div>
       )}
       <AccountLayout label="Menu da gestão" menu={<ManagementMenu user={user} />}>
-        {tab === "Pedidos de material" ? (
+        {tab === "Referência de Prazeres" ? (
+          <StoreReference />
+        ) : tab === "Pedidos de material" ? (
           <CompanyRequests kind="material" />
         ) : !state && !error ? (
           <PanelSkeleton label="Carregando dados da loja…" />
