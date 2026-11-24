@@ -3,7 +3,7 @@ import {
   PurchaseDeliveryForm,
   PurchaseDeliveryHistory,
 } from "@/components/preciso/CommercialPurchases";
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import {
   commercialFetch,
@@ -27,7 +27,12 @@ import { CommercialImport } from "@/components/preciso/CommercialImport";
 import { CompanyAccess } from "@/components/preciso/CompanyAccess";
 import { sessionCache } from "@/components/preciso/CompanySession";
 import { CompanyRequests } from "@/components/preciso/CompanyRequests";
-import { AccountLayout, ManagementMenu } from "@/components/preciso/AccountMenu";
+import {
+  AccountLayout,
+  ManagementMenu,
+  hasManagementAccess,
+  managementHome,
+} from "@/components/preciso/AccountMenu";
 import type { CompanyActor } from "@/lib/company-permissions";
 import { SalesQualityChart } from "@/components/preciso/SalesQualityChart";
 import {
@@ -127,8 +132,15 @@ function Commercial() {
           undefined,
           controller.signal,
         );
-        if (data.user.role !== "admin")
-          throw new Error("Esta área exige uma conta administrativa.");
+        if (controller.signal.aborted) return;
+        if (data.user.role !== "admin") {
+          if (hasManagementAccess(data.user)) {
+            await navigate({ to: managementHome(data.user), replace: true });
+          } else {
+            await navigate({ to: "/login", search: { acesso: "gestao" }, replace: true });
+          }
+          return;
+        }
         sessionCache.user = data.user;
         setUser(data.user);
         try {
@@ -142,8 +154,17 @@ function Commercial() {
         }
         await load(controller.signal);
       } catch (failure) {
-        if (!controller.signal.aborted && (failure as Error & { status?: number }).status !== 401)
-          setError(failure instanceof Error ? failure.message : "Falha ao carregar a gestão.");
+        if (controller.signal.aborted) return;
+        if ((failure as Error & { status?: number }).status === 401) {
+          sessionCache.user = null;
+          storeCache.state = null;
+          storeCache.report = null;
+          setUser(null);
+          setState(null);
+          await navigate({ to: "/login", search: { acesso: "gestao" }, replace: true });
+          return;
+        }
+        setError(failure instanceof Error ? failure.message : "Falha ao carregar a gestão.");
       } finally {
         if (!controller.signal.aborted) setLoading(false);
       }
@@ -216,64 +237,20 @@ function Commercial() {
     return execute(operation);
   };
 
-  async function signIn(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setBusy(true);
-    setError("");
-    const form = event.currentTarget;
-    const data = new FormData(form);
-    try {
-      const response = await commercialFetch<{ user: Actor }>("auth/login", {
-        access: "management",
-        email: String(data.get("email")),
-        password: String(data.get("password")),
-      });
-      if (response.user.role !== "admin")
-        throw new Error("Esta área exige uma conta administrativa.");
-      sessionCache.user = response.user;
-      setUser(response.user);
-      await load();
-    } catch (failure) {
-      setError(failure instanceof Error ? failure.message : "Falha ao entrar.");
-      const field = form.elements.namedItem("password") as HTMLInputElement;
-      field.value = "";
-      field.focus();
-    } finally {
-      setBusy(false);
-    }
-  }
-
   if (loading) return <LoadingSkeleton sidebar />;
   if (!user)
     return (
       <main className="commercial">
-        <header className="commercial-header">
-          <h1>OURO BRANCO</h1>
-          <Link to="/">Ver site</Link>
-        </header>
-        <form onSubmit={signIn} className="panel" style={{ maxWidth: 480, margin: "40px auto" }}>
-          <h2>Login da gestão da loja e da empresa</h2>
-          <p className="hint">Use o mesmo e-mail e senha para acessar a loja e os serviços.</p>
+        <section className="panel">
           {error && (
             <p role="alert" className="notice error">
               {error}
             </p>
           )}
-          <label>
-            E-mail
-            <input type="email" name="email" autoComplete="username" required />
-          </label>
-          <label>
-            Senha
-            <input type="password" name="password" autoComplete="current-password" required />
-          </label>
-          <button disabled={busy} className="action primary">
-            {busy ? "Entrando…" : "Entrar"}
-          </button>
-          <Link to="/login" className="action">
-            Login do cliente
+          <Link to="/login" search={{ acesso: "gestao" }} className="action primary">
+            Entrar na gestão
           </Link>
-        </form>
+        </section>
       </main>
     );
 
@@ -299,6 +276,7 @@ function Commercial() {
                   storeCache.report = null;
                   setUser(null);
                   setState(null);
+                  return navigate({ to: "/login", search: { acesso: "gestao" }, replace: true });
                 })
                 .catch((failure) => setError(failure.message))
             }
@@ -362,7 +340,7 @@ function Commercial() {
                   setEditing("new");
                 }}
                 openMaterials={() => setTab("Pedidos de material")}
-                openQuotes={() => void navigate({ to: "/admin/gestao-servicos" })}
+                openInventory={() => setTab("Estoque")}
                 openFinance={() => setTab("Financeiro")}
               />
             )}
@@ -638,14 +616,14 @@ function Commercial() {
                     Cadastrar produto
                   </button>
                 </div>
-                <StockBalances products={state.products} />
-                <StockGuide />
                 <p className="notice space">
-                  Saco, meio saco e quilo mexem no mesmo saldo. Escolha a unidade que você usou para
-                  contar.
+                  Para lançar o estoque inicial, selecione o produto e a unidade e informe a
+                  quantidade total contada. Se você tem 1.500 placas, escolha a placa por unidade e
+                  digite 1500. A contagem substitui o saldo atual. As vendas confirmadas dão baixa
+                  automaticamente.
                 </p>
                 <CommandForm
-                  title="Ajustar estoque ou registrar contagem"
+                  title="Lançar contagem ou ajustar estoque"
                   kind="adjustment"
                   command={command}
                   fields={[
@@ -681,6 +659,8 @@ function Commercial() {
                   ]}
                   extra={(data) => ({ ...data, product_id: productForUnit(state, data.unit_id) })}
                 />
+                <StockBalances products={state.products} />
+                <StockGuide />
                 <section className="panel space">
                   <h2>Últimas movimentações</h2>
                   {state.movements.length === 0 && (
@@ -734,7 +714,7 @@ function Commercial() {
                   kind="customer"
                   command={command}
                   fields={[
-                    { name: "name", label: "Nome", required: true },
+                    { name: "name", label: "Nome completo ou razão social", required: true },
                     { name: "contact", label: "Telefone ou e-mail" },
                     {
                       name: "profile",

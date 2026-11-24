@@ -58,17 +58,22 @@ export function CompanySession({
         if (!controller.signal.aborted) setUser(user);
       })
       .catch((failure: Error & { status?: number }) => {
+        if (controller.signal.aborted) return;
         if (failure.status === 401) {
           sessionCache.user = null;
-          if (!controller.signal.aborted) setUser(null);
+          setUser(null);
+          if (management) {
+            void navigate({ to: "/login", search: { acesso: "gestao" }, replace: true });
+          }
+          return;
         }
-        if (!controller.signal.aborted && failure.status !== 401) setError(failure.message);
+        setError(failure.message);
       })
       .finally(() => {
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, []);
+  }, [management, navigate]);
   async function signOut() {
     try {
       await commercialFetch("auth/logout", {});
@@ -77,7 +82,7 @@ export function CompanySession({
         const { supabase } = await import("@/integrations/supabase/client");
         await supabase.auth.signOut({ scope: "local" });
       }
-      await navigate({ to: "/login" });
+      await navigate({ to: "/login", search: management || allowed ? { acesso: "gestao" } : {} });
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : "Não foi possível sair.");
     }

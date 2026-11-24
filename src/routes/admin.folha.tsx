@@ -12,12 +12,11 @@ import {
   Fiados,
   WeekSheet,
 } from "@/components/preciso/StoreSheets";
-import { Deliveries } from "@/components/preciso/StoreDeliveries";
 import type { CompanyActor } from "@/lib/company-permissions";
 
-const slugs = ["semana", "fechamentos", "fiados", "debitos", "entregas"] as const;
+const slugs = ["semana", "fechamentos", "fiados", "debitos"] as const;
 type Slug = (typeof slugs)[number];
-const adminOnly: Slug[] = ["fiados", "debitos", "entregas"];
+const adminOnly: Slug[] = ["fiados", "debitos"];
 
 export const Route = createFileRoute("/admin/folha")({
   validateSearch: (search: Record<string, unknown>): { secao?: Slug; dia?: string } => ({
@@ -47,7 +46,6 @@ function StoreArea({ user }: { user: CompanyActor }) {
       {secao === "fechamentos" && <Closings openDay={openDay} />}
       {secao === "fiados" && <Fiados />}
       {secao === "debitos" && <CompanyDebts />}
-      {secao === "entregas" && <Deliveries />}
     </AccountLayout>
   );
 }

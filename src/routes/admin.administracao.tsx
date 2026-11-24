@@ -23,6 +23,7 @@ function Administration() {
   return (
     <CompanySession
       title="Administração"
+      management
       allowed={(user) =>
         secao === "senha"
           ? hasManagementAccess(user)

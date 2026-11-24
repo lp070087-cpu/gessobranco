@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState, useRef } from "react";
+import { Link } from "@tanstack/react-router";
 import {
   applicablePrice,
   moneyBR,
@@ -94,6 +95,7 @@ export function CommercialSales({ state, command }: { state: CommercialState; co
       });
       setSelected(result.id);
       setCart([]);
+      setCustomer("");
       setPayments([]);
       setConfirmed(false);
       setCosts({ freight: "", fees: "", taxes: "", other_costs: "" });
@@ -173,7 +175,7 @@ export function CommercialSales({ state, command }: { state: CommercialState; co
         <section className="panel">
           <h2>Venda atual</h2>
           <label>
-            Cliente
+            Nome do cliente
             <select value={customer} onChange={(e) => setCustomer(e.target.value)}>
               <option value="">Consumidor não identificado</option>
               {state.customers.map((item) => (
@@ -183,6 +185,9 @@ export function CommercialSales({ state, command }: { state: CommercialState; co
               ))}
             </select>
           </label>
+          <Link to="/admin/comercial" search={{ secao: "clientes" }} className="action">
+            Cadastrar cliente
+          </Link>
           {lines.map((line) => {
             const demand = lines
               .filter((item) => item.product.id === line.product.id)
@@ -422,6 +427,7 @@ export function CommercialSales({ state, command }: { state: CommercialState; co
               <tr>
                 <th>Data</th>
                 <th>Código</th>
+                <th>Cliente</th>
                 <th>Venda líquida</th>
                 <th>Recebido</th>
                 <th>Saldo</th>
@@ -435,13 +441,14 @@ export function CommercialSales({ state, command }: { state: CommercialState; co
                   <td>
                     <button onClick={() => setSelected(item.id)}>{item.id.slice(0, 8)}</button>
                   </td>
+                  <td>
+                    {state.customers.find((customer) => customer.id === item.customer_id)?.name ??
+                      "Consumidor não identificado"}
+                  </td>
                   <td>{moneyBR(Number(item.revenue) - Number(item.returned_revenue))}</td>
                   <td>{moneyBR(item.received)}</td>
                   <td>{moneyBR(item.receivable)}</td>
-                  <td>
-                    {item.status === "cancelled" ? "Cancelada" : "Confirmada"} ·{" "}
-                    {item.delivery === "delivered" ? "Entregue" : "Entrega pendente"}
-                  </td>
+                  <td>{item.status === "cancelled" ? "Cancelada" : "Confirmada"}</td>
                 </tr>
               ))}
             </tbody>
@@ -462,6 +469,8 @@ function SaleDetails({
   state: CommercialState;
   command: Command;
 }) {
+  const receipt = useRef<HTMLDivElement>(null);
+  useEffect(() => receipt.current?.scrollIntoView({ block: "start" }), []);
   return (
     <section className="panel space">
       <h2>Venda {sale.id.slice(0, 8)}</h2>
@@ -487,31 +496,42 @@ function SaleDetails({
           </p>
         )),
       )}
-      <div className="receipt">
+      <div ref={receipt} className="receipt">
         <h3>OURO BRANCO — SOLUÇÕES EM GESSO</h3>
-        <p>Comprovante simples de venda</p>
+        <p>Recibo de venda · {sale.id.slice(0, 8)}</p>
         <p>
-          {sale.id} · {new Date(sale.created_at).toLocaleString("pt-BR")}
+          Data{" "}
+          {new Date(sale.created_at).toLocaleString("pt-BR", {
+            timeZone: "America/Sao_Paulo",
+          })}
         </p>
         <p>
           Cliente{" "}
           {state.customers.find((customer) => customer.id === sale.customer_id)?.name ??
-            "Não identificado"}
+            "Consumidor não identificado"}
         </p>
         <table>
+          <thead>
+            <tr>
+              <th>Material</th>
+              <th>Quantidade</th>
+              <th>Preço unitário</th>
+              <th>Total</th>
+            </tr>
+          </thead>
           <tbody>
             {sale.items.map((item) => (
               <tr key={item.id}>
+                <td>{item.product_name}</td>
                 <td>
-                  {item.product_name}
-                  <br />
-                  {quantityBR(item.quantity)} {item.unit_name} × {moneyBR(item.price)}
+                  {quantityBR(item.quantity)} {item.unit_name}
                   {Number(item.returned) > 0 && (
                     <p>
                       Devolvido {quantityBR(item.returned)} {item.unit_name}
                     </p>
                   )}
                 </td>
+                <td>{moneyBR(item.price)}</td>
                 <td>
                   {moneyBR(Number(item.revenue) - Number(item.price) * Number(item.returned))}
                 </td>
@@ -523,33 +543,14 @@ function SaleDetails({
         <p>
           Recebido {moneyBR(sale.received)} · Saldo {moneyBR(sale.receivable)}
         </p>
-        <p>
-          {sale.status === "cancelled" ? "Venda cancelada" : "Venda confirmada"} ·{" "}
-          {sale.delivery === "delivered" ? "Entrega registrada" : "Entrega pendente"}
-        </p>
+        <p>{sale.status === "cancelled" ? "Venda cancelada" : "Venda confirmada"}</p>
         <small>Documento sem valor fiscal.</small>
         <div>
           <button className="action" onClick={() => window.print()}>
-            Imprimir comprovante
+            Imprimir recibo
           </button>
         </div>
       </div>
-      {sale.status === "confirmed" && (
-        <div className="actions">
-          <button
-            className="action"
-            onClick={() => {
-              if (window.confirm("Confirmar alteração do estado da entrega?"))
-                void command("delivery", {
-                  sale_id: sale.id,
-                  delivery: sale.delivery === "delivered" ? "pending" : "delivered",
-                }).catch(() => {});
-            }}
-          >
-            {sale.delivery === "delivered" ? "Marcar entrega pendente" : "Confirmar entrega"}
-          </button>
-        </div>
-      )}
       <details>
         <summary>Conferir custos da venda</summary>
         <CommandForm

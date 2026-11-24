@@ -5,6 +5,7 @@ import {
   Link,
   createRootRouteWithContext,
   useRouter,
+  useRouterState,
   HeadContent,
   Scripts,
   type ErrorComponentProps,
@@ -79,7 +80,6 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
       { name: "theme-color", content: "#f7f5ef" },
-      { name: "apple-mobile-web-app-title", content: "Ouro Branco" },
       { title: "Ouro Branco — Orçamento premium para pintura, gesso e reformas" },
       {
         name: "description",
@@ -96,7 +96,6 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { name: "twitter:card", content: "summary" },
     ],
     links: [
-      { rel: "manifest", href: "/manifest.webmanifest" },
       { rel: "icon", type: "image/png", sizes: "192x192", href: "/app-icon-192.png" },
       { rel: "apple-touch-icon", sizes: "180x180", href: "/apple-touch-icon.png" },
       { rel: "preconnect", href: "https://fonts.googleapis.com" },
@@ -119,10 +118,25 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 });
 
 function RootShell({ children }: { children: React.ReactNode }) {
+  const management = useRouterState({
+    select: ({ location }) =>
+      location.pathname === "/admin" ||
+      location.pathname.startsWith("/admin/") ||
+      (location.pathname === "/login" && location.search.acesso === "gestao"),
+  });
+
   return (
     <html lang="pt-BR">
       <head>
         <HeadContent />
+        <link
+          rel="manifest"
+          href={management ? "/manifest-gestao.webmanifest" : "/manifest.webmanifest"}
+        />
+        <meta
+          name="apple-mobile-web-app-title"
+          content={management ? "Ouro Branco Gestão" : "Ouro Branco"}
+        />
       </head>
       <body>
         {children}

@@ -50,7 +50,7 @@ export function CommercialOverview({
   sell,
   createProduct,
   openMaterials,
-  openQuotes,
+  openInventory,
   openFinance,
 }: {
   state: CommercialState;
@@ -59,7 +59,7 @@ export function CommercialOverview({
   sell: () => void;
   createProduct: () => void;
   openMaterials: () => void;
-  openQuotes: () => void;
+  openInventory: () => void;
   openFinance: () => void;
 }) {
   const { start, end } = period;
@@ -118,8 +118,8 @@ export function CommercialOverview({
         <button className="action" type="button" onClick={createProduct}>
           Cadastrar produto
         </button>
-        <button className="action" type="button" onClick={openQuotes}>
-          Consultar orçamentos
+        <button className="action" type="button" onClick={openInventory}>
+          Lançar estoque
         </button>
       </div>
       {!overview && !error && (
@@ -161,7 +161,6 @@ export function CommercialOverview({
         <RecentList
           title="Solicitações de orçamento de serviços"
           entries={overview?.recent_quotes}
-          open={openQuotes}
         />
       </div>
       <section className="panel space">
@@ -208,7 +207,7 @@ function RecentList({
 }: {
   title: string;
   entries?: RecentRequest[];
-  open: () => void;
+  open?: () => void;
 }) {
   return (
     <section className="panel">
@@ -229,9 +228,11 @@ function RecentList({
         ) : (
           <p className="hint">Nenhuma solicitação recebida.</p>
         ))}
-      <button className="action space" type="button" onClick={open}>
-        Ver todos
-      </button>
+      {open && (
+        <button className="action space" type="button" onClick={open}>
+          Ver todos
+        </button>
+      )}
     </section>
   );
 }

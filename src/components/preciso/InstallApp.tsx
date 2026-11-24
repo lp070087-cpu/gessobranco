@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Download } from "lucide-react";
+import { useRouterState } from "@tanstack/react-router";
 import {
   Dialog,
   DialogContent,
@@ -40,6 +41,10 @@ const installHelp: Record<Platform, string> = {
 };
 
 export function InstallApp() {
+  const pathname = useRouterState({ select: ({ location }) => location.pathname });
+  const management = pathname.startsWith("/admin/");
+  const administration = "/admin/comercial";
+  const goToAdministration = management && pathname !== administration;
   const [platform, setPlatform] = useState<Platform | null>(null);
   const [installed, setInstalled] = useState(false);
   const [open, setOpen] = useState(false);
@@ -81,7 +86,7 @@ export function InstallApp() {
   if (!platform || installed) return null;
 
   async function showInstall(nextOpen: boolean) {
-    if (!nextOpen || !deferred) {
+    if (!nextOpen || !deferred || goToAdministration) {
       setOpen(nextOpen);
       return;
     }
@@ -100,13 +105,25 @@ export function InstallApp() {
     <Dialog open={open} onOpenChange={(nextOpen) => void showInstall(nextOpen)}>
       <DialogTrigger asChild>
         <button type="button" className="account-menu-item ouro-install-action">
-          <Download size={16} aria-hidden="true" /> Instalar app
+          <Download size={16} aria-hidden="true" />
+          {management ? "Instalar app da gestão" : "Instalar app"}
         </button>
       </DialogTrigger>
       <DialogContent className="w-[calc(100%-2rem)] max-w-md rounded-2xl border-border bg-background text-foreground">
         <DialogHeader>
-          <DialogTitle>Instalar Ouro Branco</DialogTitle>
-          <DialogDescription>{installHelp[platform]}</DialogDescription>
+          <DialogTitle>
+            {management ? "Instalar Ouro Branco Gestão" : "Instalar Ouro Branco"}
+          </DialogTitle>
+          <DialogDescription>
+            {goToAdministration
+              ? "Abra Visão geral para instalar o aplicativo da gestão por essa tela."
+              : installHelp[platform]}
+          </DialogDescription>
+          {goToAdministration && (
+            <a href={administration} className="action primary">
+              Abrir Visão geral
+            </a>
+          )}
         </DialogHeader>
       </DialogContent>
     </Dialog>

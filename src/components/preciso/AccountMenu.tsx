@@ -17,9 +17,7 @@ import {
   Landmark,
   LayoutDashboard,
   Menu,
-  PackageCheck,
   Receipt,
-  Ruler,
   Settings,
   ShoppingCart,
   Store,
@@ -44,7 +42,7 @@ export const hasManagementAccess = (user: CompanyActor) =>
   hasServiceAccess(user) || hasCompanyPermission(user, "finance_cfo") || hasStoreSheetAccess(user);
 
 export function managementHome(user: CompanyActor) {
-  if (user.role === "admin") return "/admin/administracao";
+  if (user.role === "admin") return "/admin/comercial";
   if (hasCompanyPermission(user, "service_requests")) return "/admin/administracao";
   if (hasServiceAccess(user)) return "/admin/gestao-servicos";
   if (hasStoreSheetAccess(user)) return "/admin/folha";
@@ -70,19 +68,6 @@ export const managementGroups: Group[] = [
     items: [
       {
         to: "/admin/administracao",
-        label: "Orçamentos recebidos",
-        icon: ClipboardList,
-        allow: permission("service_requests"),
-      },
-      {
-        to: "/admin/gestao-servicos",
-        secao: "catalogo",
-        label: "Valores por metro",
-        icon: Ruler,
-        allow: permission("service_catalogue"),
-      },
-      {
-        to: "/admin/administracao",
         secao: "configuracoes",
         label: "Configurações",
         icon: Settings,
@@ -104,7 +89,7 @@ export const managementGroups: Group[] = [
       {
         to: "/admin/comercial",
         secao: "vender",
-        label: "Vender",
+        label: "Vendas",
         icon: ShoppingCart,
         allow: admin,
       },
@@ -134,13 +119,6 @@ export const managementGroups: Group[] = [
         secao: "debitos",
         label: "Débitos da empresa",
         icon: Landmark,
-        allow: admin,
-      },
-      {
-        to: "/admin/folha",
-        secao: "entregas",
-        label: "Conferir entregas",
-        icon: PackageCheck,
         allow: admin,
       },
       { to: "/admin/comercial", secao: "estoque", label: "Estoque", icon: Boxes, allow: admin },

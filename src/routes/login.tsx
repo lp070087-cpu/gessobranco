@@ -207,7 +207,7 @@ function LoginPage() {
 
         <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer">
           <Checkbox checked={keepConnected} onCheckedChange={(v) => setKeepConnected(Boolean(v))} />
-          Manter conectado
+          Manter conectado neste dispositivo
         </label>
 
         <Button

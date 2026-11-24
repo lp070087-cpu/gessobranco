@@ -185,6 +185,12 @@
   background: white;
   color: #222;
   border: 1px solid #ccc;
+  scroll-margin-top: 96px;
+}
+.commercial .receipt table {
+  min-width: 0;
+  table-layout: fixed;
+  overflow-wrap: anywhere;
 }
 .commercial .sale-total {
   font-size: 32px;

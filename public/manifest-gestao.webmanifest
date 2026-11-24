@@ -1,0 +1,26 @@
+{
+  "id": "/admin",
+  "name": "Ouro Branco Gestão",
+  "short_name": "OB Gestão",
+  "description": "Visão geral e gestão da loja Ouro Branco.",
+  "lang": "pt-BR",
+  "start_url": "/admin/comercial",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f7f5ef",
+  "theme_color": "#f7f5ef",
+  "icons": [
+    {
+      "src": "/app-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/app-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
