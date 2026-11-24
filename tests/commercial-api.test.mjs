@@ -953,6 +953,64 @@ test("real HTTP handlers enforce sessions, admin roles, input validation and ori
       ).status,
       409,
     );
+    const otherSession = await request("auth/login", null, {
+      email: credentials.email,
+      password: credentials.password,
+    });
+    assert.equal(otherSession.status, 200);
+    const secondOwnerToken = otherSession.headers
+      .get("set-cookie")
+      .match(/preciso_session=([a-f0-9]+)/)[1];
+    const newPassword = "Senha-nova-teste-4820";
+    assert.equal(
+      (await request("auth/password", null, { current: credentials.password, next: newPassword }))
+        .status,
+      401,
+    );
+    assert.equal(
+      (
+        await request("auth/password", token, {
+          current: credentials.password,
+          next: "curta-12345",
+        })
+      ).status,
+      400,
+    );
+    assert.equal(
+      (
+        await request("auth/password", token, {
+          current: "Senha-atual-incorreta",
+          next: newPassword,
+        })
+      ).status,
+      400,
+    );
+    assert.equal(
+      (await request("auth/password", token, { current: credentials.password, next: newPassword }))
+        .status,
+      200,
+    );
+    assert.equal((await request("auth/me", token)).status, 200);
+    assert.equal((await request("auth/me", secondOwnerToken)).status, 401);
+    assert.equal(
+      (
+        await request("auth/login", null, {
+          email: credentials.email,
+          password: credentials.password,
+        })
+      ).status,
+      401,
+    );
+    assert.equal(
+      (
+        await request("auth/login", null, {
+          email: credentials.email,
+          password: newPassword,
+          access: "management",
+        })
+      ).status,
+      200,
+    );
     await db.exec("UPDATE preciso.users SET disabled=true WHERE email='client@example.invalid'");
     assert.equal((await request("commercial/state", token)).status, 401);
     delete process.env.DATABASE_URL;

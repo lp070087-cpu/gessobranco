@@ -465,22 +465,43 @@ export async function handleNeonRequest(request: Request, now = new Date()): Pro
     if (path === "auth/me" && request.method === "GET") return json({ user });
     if (path === "auth/password" && request.method === "POST") {
       const input = z
-        .object({ current: z.string().min(1).max(200), next: z.string().min(10).max(200) })
+        .object({ current: z.string().min(1).max(200), next: credentials.shape.password })
         .strict()
-        .parse(await body(request));
+        .safeParse(await body(request));
+      if (!input.success)
+        return json({ error: "A nova senha deve ter de 12 a 128 caracteres." }, 400);
+      const { current, next } = input.data;
+      if (current === next) return json({ error: "Escolha uma senha diferente da atual." }, 400);
+      if (!(await withinRateLimit(db, `change-password:${user.id}`, 10)))
+        return json({ error: "Muitas tentativas. Aguarde 15 minutos e tente novamente." }, 429);
+
       const [row] = await db
         .select({ hash: users.passwordHash })
         .from(users)
         .where(eq(users.id, user.id))
         .limit(1);
-      if (!row || !(await verifyPassword(input.current, row.hash)))
+      if (!row || !(await verifyPassword(current, row.hash)))
         return json({ error: "A senha atual não confere." }, 400);
-      await db.execute(sql`UPDATE preciso.users SET password_hash=${await hashPassword(input.next)}
-        WHERE id=${user.id}::uuid`);
-      // Outras sessões abertas com a senha antiga saem; esta continua.
-      await db.execute(sql`DELETE FROM preciso.sessions WHERE user_id=${user.id}::uuid
-        AND token_hash<>${sha256(token(request))}`);
-      return json({ ok: true });
+      const currentSession = sha256(token(request));
+      const changed = await db.execute(sql`WITH updated AS (
+        UPDATE preciso.users SET password_hash=${await hashPassword(next)}
+        WHERE id=${user.id}::uuid AND NOT disabled AND password_hash=${row.hash}
+          AND EXISTS (
+            SELECT 1 FROM preciso.sessions
+            WHERE user_id=${user.id}::uuid AND token_hash=${currentSession} AND expires_at>now()
+          )
+        RETURNING id
+      ), revoked AS (
+        DELETE FROM preciso.sessions s USING updated u
+        WHERE s.user_id=u.id AND s.token_hash<>${currentSession}
+      )
+      SELECT id FROM updated`);
+      return changed.rows.length
+        ? json({ ok: true })
+        : json(
+            { error: "Sua conta mudou durante a operação. Entre novamente e tente outra vez." },
+            409,
+          );
     }
     if (
       path === "admin/expense-setup" ||

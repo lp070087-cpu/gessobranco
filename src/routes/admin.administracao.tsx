@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import {
   AccountLayout,
   ManagementMenu,
@@ -34,7 +34,15 @@ function Administration() {
           {secao === "senha" ? (
             <ChangePassword />
           ) : settings && user.role === "admin" ? (
-            <BusinessSettingsForm />
+            <>
+              <section className="panel">
+                <h2>Segurança da conta</h2>
+                <Link to="/admin/administracao" search={{ secao: "senha" }} className="action">
+                  Trocar senha
+                </Link>
+              </section>
+              <BusinessSettingsForm />
+            </>
           ) : (
             <CompanyRequests
               kind="service"
