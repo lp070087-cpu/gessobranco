@@ -192,6 +192,10 @@
   table-layout: fixed;
   overflow-wrap: anywhere;
 }
+.commercial .shop-document-notes {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 .commercial .sale-total {
   font-size: 32px;
   font-weight: 500;
@@ -221,18 +225,27 @@
   }
 }
 @media print {
-  body:has(.receipt) * {
-    visibility: hidden;
+  body:has(.receipt) *:not(:has(.receipt), .receipt, .receipt *) {
+    display: none !important;
   }
-  body:has(.receipt) .receipt,
-  body:has(.receipt) .receipt * {
-    visibility: visible;
+  body:has(.receipt) :has(.receipt) {
+    display: block !important;
+    position: static !important;
+    overflow: visible !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    box-shadow: none !important;
   }
   .commercial .receipt {
-    position: absolute;
-    inset: 0 auto auto 0;
+    max-width: none;
     border: 0;
     width: 100%;
+  }
+  .commercial .receipt tr {
+    break-inside: avoid;
   }
   .commercial .receipt button {
     display: none;

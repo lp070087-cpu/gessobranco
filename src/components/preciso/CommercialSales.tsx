@@ -2,12 +2,15 @@ import { useEffect, useState, useRef } from "react";
 import { Link } from "@tanstack/react-router";
 import {
   applicablePrice,
+  commercialFetch,
   moneyBR,
   quantityBR,
   type CommercialState,
   type Sale,
 } from "@/lib/commercial-client";
 import { CommandForm, paymentOptions, type Command } from "./CommercialForms";
+import type { ShopQuote } from "@/lib/shop-quote";
+import { ShopDocument } from "./ShopDocument";
 
 type CartLine = {
   key: string;
@@ -18,7 +21,15 @@ type CartLine = {
 };
 type PaymentLine = { key: string; method: string; amount: string; reference: string };
 
-export function CommercialSales({ state, command }: { state: CommercialState; command: Command }) {
+export function CommercialSales({
+  state,
+  command,
+  quoteId,
+}: {
+  state: CommercialState;
+  command: Command;
+  quoteId?: string;
+}) {
   const [query, setQuery] = useState("");
   const [customer, setCustomer] = useState("");
   const [cart, setCart] = useState<CartLine[]>([]);
@@ -28,6 +39,48 @@ export function CommercialSales({ state, command }: { state: CommercialState; co
   const [busy, setBusy] = useState(false);
   const [selected, setSelected] = useState("");
   const [feedback, setFeedback] = useState("");
+  const [quote, setQuote] = useState<ShopQuote | null>(null);
+
+  useEffect(() => {
+    if (!quoteId || quote) return;
+    const controller = new AbortController();
+    void commercialFetch<ShopQuote>(
+      `commercial/shop-quotes?id=${quoteId}`,
+      undefined,
+      controller.signal,
+    )
+      .then((data) => {
+        if (controller.signal.aborted) return;
+        const activeUnits = new Set(
+          state.products
+            .filter((product) => product.active)
+            .flatMap((product) => product.units.map((unit) => unit.id)),
+        );
+        if (
+          !state.customers.some((entry) => entry.id === data.customer_id) ||
+          data.items.some((item) => !activeUnits.has(item.unit_id))
+        ) {
+          throw new Error(
+            "O cliente ou uma unidade do orçamento já não está disponível. Confira os cadastros.",
+          );
+        }
+        setCustomer(data.customer_id);
+        setCart(
+          data.items.map((item) => ({
+            key: crypto.randomUUID(),
+            unit_id: item.unit_id,
+            quantity: String(item.quantity),
+            negotiated: String(item.unit_price),
+            reason: `Orçamento ${data.id.slice(0, 8).toUpperCase()}`,
+          })),
+        );
+        setQuote(data);
+      })
+      .catch((failure: Error) => {
+        if (!controller.signal.aborted) setFeedback(failure.message);
+      });
+    return () => controller.abort();
+  }, [quoteId, quote, state.customers, state.products]);
   const person = state.customers.find((item) => item.id === customer);
   const lines = cart.map((line) => {
     const product = state.products.find((item) =>
@@ -106,8 +159,30 @@ export function CommercialSales({ state, command }: { state: CommercialState; co
     }
   }
 
+  if (quoteId && !quote)
+    return (
+      <section className="panel">
+        {feedback ? (
+          <p className="notice error" role="alert">
+            {feedback}
+          </p>
+        ) : (
+          <p role="status">Carregando orçamento…</p>
+        )}
+        <Link className="action" to="/admin/comercial" search={{ secao: "orcamentos" }}>
+          Voltar aos orçamentos
+        </Link>
+      </section>
+    );
+
   return (
     <>
+      {quote && cart.length > 0 && (
+        <p className="notice">
+          Orçamento {quote.id.slice(0, 8).toUpperCase()} carregado. Confira os itens e informe o
+          pagamento antes de finalizar.
+        </p>
+      )}
       {!state.cash && (
         <div className="notice">
           Abra o caixa na Folha do dia antes de registrar vendas e pagamentos.
@@ -498,61 +573,33 @@ function SaleDetails({
           </p>
         )),
       )}
-      <div ref={receipt} className="receipt">
-        <h3>OURO BRANCO — SOLUÇÕES EM GESSO</h3>
-        <p>Recibo de venda · {sale.id.slice(0, 8)}</p>
-        <p>
-          Data{" "}
-          {new Date(sale.created_at).toLocaleString("pt-BR", {
-            timeZone: "America/Sao_Paulo",
-          })}
-        </p>
-        <p>
-          Cliente{" "}
-          {state.customers.find((customer) => customer.id === sale.customer_id)?.name ??
-            "Consumidor não identificado"}
-        </p>
-        <table>
-          <thead>
-            <tr>
-              <th>Material</th>
-              <th>Quantidade</th>
-              <th>Preço unitário</th>
-              <th>Total</th>
-            </tr>
-          </thead>
-          <tbody>
-            {sale.items.map((item) => (
-              <tr key={item.id}>
-                <td>{item.product_name}</td>
-                <td>
-                  {quantityBR(item.quantity)} {item.unit_name}
-                  {Number(item.returned) > 0 && (
-                    <p>
-                      Devolvido {quantityBR(item.returned)} {item.unit_name}
-                    </p>
-                  )}
-                </td>
-                <td>{moneyBR(item.price)}</td>
-                <td>
-                  {moneyBR(Number(item.revenue) - Number(item.price) * Number(item.returned))}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        <p>Total após devoluções {moneyBR(Number(sale.revenue) - Number(sale.returned_revenue))}</p>
+      <ShopDocument
+        title="Recibo de venda"
+        code={sale.id}
+        date={sale.created_at}
+        customer={
+          state.customers.find((customer) => customer.id === sale.customer_id)?.name ??
+          "Consumidor não identificado"
+        }
+        items={sale.items.map((item) => ({
+          id: item.id,
+          name: item.product_name,
+          unit: item.unit_name,
+          quantity: item.quantity,
+          returned: item.returned,
+          price: item.price,
+          total: Number(item.revenue) - Number(item.price) * Number(item.returned),
+        }))}
+        total={Number(sale.revenue) - Number(sale.returned_revenue)}
+        totalLabel="Total após devoluções"
+        printLabel="Imprimir recibo"
+        documentRef={receipt}
+      >
         <p>
           Recebido {moneyBR(sale.received)} · Saldo {moneyBR(sale.receivable)}
         </p>
         <p>{sale.status === "cancelled" ? "Venda cancelada" : "Venda confirmada"}</p>
-        <small>Documento sem valor fiscal.</small>
-        <div>
-          <button className="action" onClick={() => window.print()}>
-            Imprimir recibo
-          </button>
-        </div>
-      </div>
+      </ShopDocument>
       <details>
         <summary>Conferir custos da venda</summary>
         <CommandForm

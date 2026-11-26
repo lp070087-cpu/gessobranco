@@ -14,6 +14,7 @@ type RecentRequest = { id: string; subject: string; status: string; created_at: 
 type Overview = {
   materials: number;
   quotes: number;
+  shop_quotes: number;
   recent_materials: RecentRequest[];
   recent_quotes: RecentRequest[];
   overdue_expenses: number;
@@ -48,6 +49,7 @@ export function CommercialOverview({
   report,
   period,
   sell,
+  createQuote,
   createProduct,
   openMaterials,
   openInventory,
@@ -57,6 +59,7 @@ export function CommercialOverview({
   report: Report | null;
   period: Period;
   sell: () => void;
+  createQuote: () => void;
   createProduct: () => void;
   openMaterials: () => void;
   openInventory: () => void;
@@ -100,7 +103,11 @@ export function CommercialOverview({
         : "Contribuição menos despesas do período.",
     ],
     ["Pedidos recebidos", overview?.materials ?? "—", "Pedidos de material"],
-    ["Novos orçamentos", overview?.quotes ?? "—", "Solicitações e orçamentos de serviço"],
+    [
+      "Novos orçamentos",
+      overview ? overview.quotes + overview.shop_quotes : "—",
+      "Materiais e serviços",
+    ],
   ] as const;
   return (
     <>
@@ -114,6 +121,9 @@ export function CommercialOverview({
       <div className="actions">
         <button className="action primary" type="button" onClick={sell}>
           Registrar venda
+        </button>
+        <button className="action" type="button" onClick={createQuote}>
+          Novo orçamento
         </button>
         <button className="action" type="button" onClick={createProduct}>
           Cadastrar produto

@@ -22,6 +22,7 @@ import {
   productUnits,
   type Command,
 } from "@/components/preciso/CommercialForms";
+import { CommercialQuotes } from "@/components/preciso/CommercialQuotes";
 import { CommercialSales } from "@/components/preciso/CommercialSales";
 import { CommercialImport } from "@/components/preciso/CommercialImport";
 import { CompanyAccess } from "@/components/preciso/CompanyAccess";
@@ -45,6 +46,7 @@ import "@/components/preciso/commercial.css";
 
 const sections = {
   vender: "Vender",
+  orcamentos: "Orçamentos",
   produtos: "Produtos",
   estoque: "Estoque",
   clientes: "Clientes",
@@ -56,10 +58,16 @@ const sections = {
 } as const;
 type Section = keyof typeof sections;
 export const Route = createFileRoute("/admin/comercial")({
-  validateSearch: (search: Record<string, unknown>): { secao?: Section } =>
-    typeof search.secao === "string" && search.secao in sections
-      ? { secao: search.secao as Section }
-      : {},
+  validateSearch: (search: Record<string, unknown>): { secao?: Section; orcamento?: string } => {
+    const secao = search.secao;
+    if (typeof secao !== "string" || !Object.hasOwn(sections, secao)) return {};
+    const orcamento = search.orcamento;
+    return secao === "vender" &&
+      typeof orcamento === "string" &&
+      /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(orcamento)
+      ? { secao, orcamento }
+      : { secao: secao as Section };
+  },
   head: () => ({ meta: [{ title: "Gestão da Loja — Ouro Branco" }] }),
   component: Commercial,
 });
@@ -79,7 +87,7 @@ function Commercial() {
   const [user, setUser] = useState<Actor | null>(cachedUser);
   const [state, setState] = useState<CommercialState | null>(cachedUser ? storeCache.state : null);
   const [report, setReport] = useState<Report | null>(cachedUser ? storeCache.report : null);
-  const { secao } = Route.useSearch();
+  const { secao, orcamento } = Route.useSearch();
   const tab: Tab = secao ? sections[secao] : "Visão Geral";
   const setTab = (next: Tab) => {
     setEditing(null);
@@ -335,6 +343,7 @@ function Commercial() {
                 report={report}
                 period={reportPeriod}
                 sell={() => setTab("Vender")}
+                createQuote={() => setTab("Orçamentos")}
                 createProduct={() => {
                   setTab("Produtos");
                   setEditing("new");
@@ -457,7 +466,15 @@ function Commercial() {
                 )}
               </>
             )}
-            {tab === "Vender" && <CommercialSales state={state} command={command} />}
+            {tab === "Vender" && (
+              <CommercialSales
+                key={orcamento ?? "venda"}
+                state={state}
+                command={command}
+                quoteId={orcamento}
+              />
+            )}
+            {tab === "Orçamentos" && <CommercialQuotes state={state} />}
             {tab === "Produtos" && (
               <>
                 <ProductCards

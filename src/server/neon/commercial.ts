@@ -3,6 +3,7 @@ import { z } from "zod";
 import { database } from "./db";
 import { reportDownload } from "./report-download";
 import { salesQuality, saveSalesQuality } from "./sales-quality";
+import { shopQuotesRequest } from "./shop-quotes";
 import type { Report } from "@/lib/commercial-client";
 
 const quantity = z
@@ -291,6 +292,7 @@ export async function commercialRequest(
   readBody: () => Promise<unknown>,
 ) {
   if (actor.role !== "admin") return json({ error: "Acesso restrito à administração." }, 403);
+  if (path === "commercial/shop-quotes") return shopQuotesRequest(request, actor.id, readBody);
   if (path === "commercial/quality") {
     if (request.method === "POST") return json(await saveSalesQuality(actor.id, await readBody()));
     if (request.method !== "GET") return json({ error: "Operação indisponível." }, 405);
@@ -313,6 +315,8 @@ export async function commercialRequest(
         (created_at AT TIME ZONE 'America/Recife')::date BETWEEN ${start}::date AND ${end}::date)::int AS materials,
       (SELECT count(*) FROM requests WHERE kind='service' AND
         (created_at AT TIME ZONE 'America/Recife')::date BETWEEN ${start}::date AND ${end}::date)::int AS quotes,
+      (SELECT count(*)::int FROM preciso.commercial_operations WHERE kind='shop_quote' AND result IS NOT NULL AND
+        (created_at AT TIME ZONE 'America/Recife')::date BETWEEN ${start}::date AND ${end}::date) AS shop_quotes,
       (SELECT COALESCE(jsonb_agg(entry ORDER BY entry.created_at DESC,entry.id),'[]') FROM (
         SELECT id,subject,status,created_at FROM requests WHERE kind='material' ORDER BY created_at DESC,id LIMIT 4
       ) entry) AS recent_materials,

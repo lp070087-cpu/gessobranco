@@ -94,6 +94,13 @@ export const managementGroups: Group[] = [
         allow: admin,
       },
       {
+        to: "/admin/comercial",
+        secao: "orcamentos",
+        label: "Orçamentos",
+        icon: ClipboardList,
+        allow: admin,
+      },
+      {
         to: "/admin/folha",
         label: "Folha do dia",
         icon: Receipt,

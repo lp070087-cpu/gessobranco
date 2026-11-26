@@ -84,6 +84,7 @@ test("real HTTP handlers enforce sessions, admin roles, input validation and ori
       );
     assert.equal((await request("commercial/state")).status, 401);
     assert.equal((await request("commercial/reference")).status, 401);
+    assert.equal((await request("commercial/shop-quotes")).status, 401);
     const credentials = {
       email: "client@example.invalid",
       password: "Password-test-12345",
@@ -99,6 +100,7 @@ test("real HTTP handlers enforce sessions, admin roles, input validation and ori
     const token = login.headers.get("set-cookie").match(/preciso_session=([a-f0-9]+)/)[1];
     assert.equal((await request("commercial/state", token)).status, 403);
     assert.equal((await request("commercial/reference", token)).status, 403);
+    assert.equal((await request("commercial/shop-quotes", token)).status, 403);
     assert.equal(
       (
         await request("commercial/product-categories", token, {
@@ -643,6 +645,80 @@ test("real HTTP handlers enforce sessions, admin roles, input validation and ori
     assert.equal(savedProduct.category, "Placas e forros");
     assert.equal(Number(savedProduct.balance), 0);
     assert.equal(Number(savedProduct.units.find((unit) => unit.name === "kg").price), 2.5);
+    const quoteCustomer = await db.query(
+      "INSERT INTO preciso.commercial_customers(name) VALUES ('Cliente orçamento de teste') RETURNING id",
+    );
+    const quoteInput = {
+      request_key: randomUUID(),
+      customer_id: quoteCustomer.rows[0].id,
+      notes: "Validade informada no balcão.",
+      items: [
+        { unit_id: sack.id, quantity: 2, unit_price: 25 },
+        {
+          unit_id: savedProduct.units.find((unit) => unit.name === "kg").id,
+          quantity: 1.005,
+          unit_price: 2.5,
+        },
+      ],
+    };
+    const quotation = await request("commercial/shop-quotes", token, quoteInput);
+    assert.equal(quotation.status, 201, await quotation.clone().text());
+    assert.equal(quotation.headers.get("cache-control"), "no-store");
+    const savedQuote = await quotation.json();
+    assert.equal(savedQuote.customer_id, quoteInput.customer_id);
+    assert.equal(savedQuote.customer_name, "Cliente orçamento de teste");
+    assert.equal(savedQuote.total_cents, 5251);
+    assert.equal(savedQuote.items[0].product_name, savedProduct.name);
+    const retry = await request("commercial/shop-quotes", token, quoteInput);
+    assert.equal(retry.status, 200);
+    assert.equal((await retry.json()).id, savedQuote.id);
+    assert.equal(
+      (await request("commercial/shop-quotes", token, { ...quoteInput, notes: "Alterado" })).status,
+      409,
+    );
+    assert.equal(
+      (
+        await request("commercial/shop-quotes", token, {
+          ...quoteInput,
+          request_key: randomUUID(),
+          items: [{ unit_id: randomUUID(), quantity: 2, unit_price: 25 }],
+        })
+      ).status,
+      409,
+    );
+    assert.equal(
+      (
+        await request("commercial/shop-quotes", token, {
+          ...quoteInput,
+          request_key: randomUUID(),
+          items: [{ unit_id: sack.id, quantity: 0, unit_price: 25 }],
+        })
+      ).status,
+      400,
+    );
+    assert.equal((await request("commercial/shop-quotes", buyerToken, quoteInput)).status, 403);
+    const quoteList = await (await request("commercial/shop-quotes", token)).json();
+    assert.equal(quoteList.length, 1);
+    assert.equal(quoteList[0].id, savedQuote.id);
+    assert.equal(quoteList[0].items, undefined);
+    const quoteDetail = await (
+      await request(`commercial/shop-quotes?id=${savedQuote.id}`, token)
+    ).json();
+    assert.deepEqual(quoteDetail, savedQuote);
+    const stateAfterQuote = await (await request("commercial/state", token)).json();
+    assert.deepEqual(stateAfterQuote.sales, savedProducts.sales);
+    assert.deepEqual(stateAfterQuote.movements, savedProducts.movements);
+    assert.equal(
+      stateAfterQuote.products.find((item) => item.id === productId).balance,
+      savedProduct.balance,
+    );
+    const quoteDay = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Recife" }).format(
+      new Date(savedQuote.created_at),
+    );
+    const quoteOverview = await (
+      await request(`commercial/overview?start=${quoteDay}&end=${quoteDay}`, token)
+    ).json();
+    assert.equal(quoteOverview.shop_quotes, 1);
     const second = await db.query(`WITH new_product AS (
       INSERT INTO preciso.commercial_products(name,base_unit,valuation_method)
       VALUES ('Placa de teste','un','fifo') RETURNING id
